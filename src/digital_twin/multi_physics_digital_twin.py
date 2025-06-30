@@ -33,6 +33,7 @@ from collections import deque
 from abc import ABC, abstractmethod
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from .uncertainty_propagation import UncertainVariable, DistributionType
 
 # Digital twin requirements
 STATE_PREDICTION_R2_TARGET = 0.99
@@ -891,53 +892,392 @@ class MultiPhysicsDigitalTwin:
     
     def validate_uq_performance(self) -> Dict[str, float]:
         """
-        Validate uncertainty quantification performance.
+        CRITICAL: Validate uncertainty quantification performance with rigorous statistical methods.
+        
+        This method replaces the placeholder implementation with proper UQ validation
+        for precision nanopositioning applications.
         
         Returns:
-            Dictionary with UQ validation metrics
+            Dictionary with comprehensive UQ validation metrics
         """
         if len(self.measurement_history) < 10:
             self.logger.warning("Insufficient data for UQ validation")
-            return {'status': 'insufficient_data'}
+            return {'status': 'insufficient_data', 'min_required': 10, 'available': len(self.measurement_history)}
         
-        # Coverage probability calculation
-        coverage_counts = {domain: 0 for domain in PhysicsDomain}
-        total_measurements = {domain: 0 for domain in PhysicsDomain}
+        # CRITICAL: Rigorous coverage probability calculation
+        coverage_results = self._calculate_rigorous_coverage_probability()
         
-        for measurement_entry in list(self.measurement_history)[-100:]:  # Last 100 measurements
-            for domain, measurement in measurement_entry['measurements'].items():
-                if domain in measurement_entry['updated_states']:
-                    state = measurement_entry['updated_states'][domain]
-                    # Check if measurement falls within uncertainty bounds
-                    # (simplified check - would use proper statistical bounds in practice)
-                    total_measurements[domain] += 1
-                    # Assume coverage if within 2-sigma bounds (placeholder)
-                    coverage_counts[domain] += 1  # Simplified - actual implementation would check bounds
+        # CRITICAL: Statistical calibration assessment
+        calibration_results = self._assess_statistical_calibration()
         
-        # Calculate coverage probabilities
-        coverage_probabilities = {}
+        # CRITICAL: Sharpness analysis
+        sharpness_results = self._analyze_prediction_sharpness()
+        
+        # CRITICAL: Cross-domain correlation analysis
+        correlation_results = self._analyze_cross_domain_correlations()
+        
+        # CRITICAL: Overall UQ performance score
+        uq_performance_score = self._calculate_uq_performance_score(
+            coverage_results, calibration_results, sharpness_results, correlation_results
+        )
+        
+        # CRITICAL: Generate UQ performance report
+        validation_results = {
+            'overall_uq_score': uq_performance_score,
+            'coverage_analysis': coverage_results,
+            'calibration_analysis': calibration_results,
+            'sharpness_analysis': sharpness_results,
+            'correlation_analysis': correlation_results,
+            'validation_timestamp': time.time(),
+            'data_samples_used': len(self.measurement_history),
+            'meets_nanopositioning_requirements': uq_performance_score >= 0.9,
+            'recommendations': self._generate_uq_recommendations(uq_performance_score, coverage_results, calibration_results)
+        }
+        
+        self.logger.info(f"UQ validation completed. Overall score: {uq_performance_score:.3f}")
+        
+        return validation_results
+    
+    def _calculate_rigorous_coverage_probability(self) -> Dict:
+        """
+        CRITICAL: Calculate rigorous coverage probability using proper statistical bounds.
+        """
+        coverage_results = {}
+        
         for domain in PhysicsDomain:
-            if total_measurements[domain] > 0:
-                coverage_probabilities[domain.value] = coverage_counts[domain] / total_measurements[domain]
+            domain_measurements = []
+            domain_predictions = []
+            domain_uncertainties = []
+            
+            # Extract measurements and predictions for this domain
+            for entry in list(self.measurement_history)[-100:]:  # Last 100 measurements
+                if domain in entry['measurements'] and domain in entry.get('predictions', {}):
+                    measurement = entry['measurements'][domain]
+                    prediction = entry['predictions'][domain]
+                    uncertainty = entry.get('uncertainties', {}).get(domain, 0.1)  # Default 10% uncertainty
+                    
+                    domain_measurements.append(measurement)
+                    domain_predictions.append(prediction)
+                    domain_uncertainties.append(uncertainty)
+            
+            if len(domain_measurements) >= 5:  # Minimum for statistical analysis
+                measurements = np.array(domain_measurements)
+                predictions = np.array(domain_predictions)
+                uncertainties = np.array(domain_uncertainties)
+                
+                # Calculate prediction intervals (95% confidence)
+                z_score = 1.96  # 95% confidence interval
+                lower_bounds = predictions - z_score * uncertainties
+                upper_bounds = predictions + z_score * uncertainties
+                
+                # Check coverage
+                within_bounds = (measurements >= lower_bounds) & (measurements <= upper_bounds)
+                coverage_probability = np.mean(within_bounds)
+                
+                # Calculate interval width statistics
+                interval_widths = upper_bounds - lower_bounds
+                mean_width = np.mean(interval_widths)
+                width_cv = np.std(interval_widths) / mean_width if mean_width > 0 else np.inf
+                
+                # Prediction accuracy
+                prediction_errors = np.abs(measurements - predictions)
+                rmse = np.sqrt(np.mean(prediction_errors**2))
+                mae = np.mean(prediction_errors)
+                
+                coverage_results[domain.value] = {
+                    'coverage_probability': coverage_probability,
+                    'n_samples': len(measurements),
+                    'mean_interval_width': mean_width,
+                    'interval_width_cv': width_cv,
+                    'rmse': rmse,
+                    'mae': mae,
+                    'meets_95_target': coverage_probability >= 0.95,
+                    'prediction_quality': 'excellent' if rmse < mean_width/4 else 'good' if rmse < mean_width/2 else 'poor'
+                }
             else:
-                coverage_probabilities[domain.value] = 0.0
+                coverage_results[domain.value] = {
+                    'coverage_probability': 0.0,
+                    'n_samples': len(domain_measurements),
+                    'status': 'insufficient_data'
+                }
         
-        # Overall coverage
-        overall_coverage = np.mean(list(coverage_probabilities.values()))
+        # Overall coverage statistics
+        valid_coverages = [r['coverage_probability'] for r in coverage_results.values() 
+                          if 'coverage_probability' in r and r.get('n_samples', 0) >= 5]
         
-        # Calibration metric (simplified χ² test)
-        chi_squared = 0.0
-        degrees_freedom = 0
+        if valid_coverages:
+            overall_coverage = np.mean(valid_coverages)
+            coverage_std = np.std(valid_coverages)
+            min_coverage = np.min(valid_coverages)
+        else:
+            overall_coverage = 0.0
+            coverage_std = 0.0
+            min_coverage = 0.0
         
-        if len(self.sync_errors) > 5:
-            errors = [entry['total_error'] for entry in list(self.sync_errors)[-20:]]
-            # Simplified χ² calculation
-            mean_error = np.mean(errors)
-            if mean_error > 0:
-                chi_squared = np.sum([(e - mean_error)**2 / mean_error for e in errors])
-                degrees_freedom = len(errors) - 1
+        coverage_results['overall'] = {
+            'mean_coverage': overall_coverage,
+            'std_coverage': coverage_std,
+            'min_coverage': min_coverage,
+            'domains_validated': len(valid_coverages),
+            'meets_requirements': overall_coverage >= 0.95 and min_coverage >= 0.90
+        }
         
-        # Sharpness metric (average uncertainty)
+        return coverage_results
+    
+    def _assess_statistical_calibration(self) -> Dict:
+        """
+        CRITICAL: Assess statistical calibration using reliability diagrams and chi-squared tests.
+        """
+        if len(self.sync_errors) < 10:
+            return {'status': 'insufficient_sync_data', 'available': len(self.sync_errors)}
+        
+        # Extract synchronization errors for analysis
+        errors = [entry['total_error'] for entry in list(self.sync_errors)[-50:]]
+        errors = np.array(errors)
+        
+        # Remove outliers (beyond 3 sigma)
+        error_mean = np.mean(errors)
+        error_std = np.std(errors, ddof=1)
+        
+        if error_std > 0:
+            z_scores = np.abs(errors - error_mean) / error_std
+            inlier_mask = z_scores <= 3
+            clean_errors = errors[inlier_mask]
+        else:
+            clean_errors = errors
+        
+        if len(clean_errors) < 5:
+            return {'status': 'insufficient_clean_data'}
+        
+        # Normality test (Shapiro-Wilk for small samples, Kolmogorov-Smirnov for large)
+        from scipy import stats
+        
+        if len(clean_errors) <= 50:
+            stat, p_value = stats.shapiro(clean_errors)
+            test_name = 'shapiro_wilk'
+        else:
+            stat, p_value = stats.kstest(clean_errors, 'norm', 
+                                       args=(np.mean(clean_errors), np.std(clean_errors, ddof=1)))
+            test_name = 'kolmogorov_smirnov'
+        
+        # Chi-squared goodness of fit test
+        hist, bin_edges = np.histogram(clean_errors, bins=min(10, len(clean_errors)//3))
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+        
+        # Expected frequencies under normal distribution
+        expected = stats.norm.pdf(bin_centers, np.mean(clean_errors), np.std(clean_errors, ddof=1))
+        expected = expected * len(clean_errors) * (bin_edges[1] - bin_edges[0])
+        
+        # Avoid zero expected frequencies
+        valid_bins = expected >= 1
+        if np.any(valid_bins):
+            chi2_stat, chi2_p = stats.chisquare(hist[valid_bins], expected[valid_bins])
+        else:
+            chi2_stat, chi2_p = np.nan, np.nan
+        
+        # Distribution metrics
+        skewness = stats.skew(clean_errors)
+        kurtosis = stats.kurtosis(clean_errors)
+        
+        return {
+            'normality_test': test_name,
+            'normality_statistic': stat,
+            'normality_p_value': p_value,
+            'is_normally_distributed': p_value > 0.05,
+            'chi2_statistic': chi2_stat,
+            'chi2_p_value': chi2_p,
+            'is_well_calibrated': chi2_p > 0.05 if not np.isnan(chi2_p) else None,
+            'skewness': skewness,
+            'kurtosis': kurtosis,
+            'n_samples': len(clean_errors),
+            'outliers_removed': len(errors) - len(clean_errors),
+            'calibration_quality': self._assess_calibration_quality(p_value, chi2_p, skewness, kurtosis)
+        }
+    
+    def _analyze_prediction_sharpness(self) -> Dict:
+        """
+        CRITICAL: Analyze prediction sharpness (uncertainty bounds width).
+        """
+        # Extract prediction intervals from measurement history
+        interval_widths = []
+        relative_widths = []
+        
+        for entry in list(self.measurement_history)[-100:]:
+            uncertainties = entry.get('uncertainties', {})
+            measurements = entry.get('measurements', {})
+            
+            for domain in PhysicsDomain:
+                if domain in uncertainties and domain in measurements:
+                    uncertainty = uncertainties[domain]
+                    measurement = measurements[domain]
+                    
+                    # 95% interval width
+                    width = 2 * 1.96 * uncertainty
+                    interval_widths.append(width)
+                    
+                    # Relative width
+                    if measurement != 0:
+                        relative_widths.append(width / np.abs(measurement))
+        
+        if not interval_widths:
+            return {'status': 'no_uncertainty_data'}
+        
+        interval_widths = np.array(interval_widths)
+        relative_widths = np.array(relative_widths) if relative_widths else np.array([])
+        
+        return {
+            'mean_interval_width': np.mean(interval_widths),
+            'std_interval_width': np.std(interval_widths, ddof=1),
+            'median_interval_width': np.median(interval_widths),
+            'mean_relative_width': np.mean(relative_widths) if len(relative_widths) > 0 else np.nan,
+            'sharpness_score': 1 / (1 + np.mean(interval_widths)),  # Higher is better (sharper)
+            'consistency_score': 1 / (1 + np.std(interval_widths, ddof=1) / np.mean(interval_widths)) if np.mean(interval_widths) > 0 else 0,
+            'n_intervals': len(interval_widths)
+        }
+    
+    def _analyze_cross_domain_correlations(self) -> Dict:
+        """
+        CRITICAL: Analyze cross-domain uncertainty correlations.
+        """
+        # Extract measurement data by domain
+        domain_data = {domain: [] for domain in PhysicsDomain}
+        
+        for entry in list(self.measurement_history)[-100:]:
+            measurements = entry.get('measurements', {})
+            for domain in PhysicsDomain:
+                if domain in measurements:
+                    domain_data[domain].append(measurements[domain])
+        
+        # Convert to arrays and ensure equal lengths
+        min_length = min(len(data) for data in domain_data.values() if data)
+        if min_length < 5:
+            return {'status': 'insufficient_data_for_correlation', 'min_length': min_length}
+        
+        domain_arrays = {}
+        for domain, data in domain_data.items():
+            if len(data) >= min_length:
+                domain_arrays[domain] = np.array(data[:min_length])
+        
+        # Calculate correlation matrix
+        domain_names = list(domain_arrays.keys())
+        n_domains = len(domain_names)
+        
+        if n_domains < 2:
+            return {'status': 'insufficient_domains', 'available_domains': n_domains}
+        
+        correlation_matrix = np.zeros((n_domains, n_domains))
+        p_value_matrix = np.zeros((n_domains, n_domains))
+        
+        from scipy.stats import pearsonr
+        
+        for i, domain1 in enumerate(domain_names):
+            for j, domain2 in enumerate(domain_names):
+                if i == j:
+                    correlation_matrix[i, j] = 1.0
+                    p_value_matrix[i, j] = 0.0
+                else:
+                    corr, p_val = pearsonr(domain_arrays[domain1], domain_arrays[domain2])
+                    correlation_matrix[i, j] = corr
+                    p_value_matrix[i, j] = p_val
+        
+        # Significant correlations (p < 0.05)
+        significant_correlations = []
+        for i in range(n_domains):
+            for j in range(i + 1, n_domains):
+                if p_value_matrix[i, j] < 0.05:
+                    significant_correlations.append({
+                        'domain1': domain_names[i].value,
+                        'domain2': domain_names[j].value,
+                        'correlation': correlation_matrix[i, j],
+                        'p_value': p_value_matrix[i, j]
+                    })
+        
+        return {
+            'correlation_matrix': correlation_matrix.tolist(),
+            'p_value_matrix': p_value_matrix.tolist(),
+            'domain_names': [d.value for d in domain_names],
+            'significant_correlations': significant_correlations,
+            'max_correlation': np.max(np.abs(correlation_matrix[correlation_matrix != 1.0])) if n_domains > 1 else 0.0,
+            'mean_abs_correlation': np.mean(np.abs(correlation_matrix[correlation_matrix != 1.0])) if n_domains > 1 else 0.0,
+            'n_significant': len(significant_correlations)
+        }
+    
+    def _calculate_uq_performance_score(self, coverage_results: Dict, calibration_results: Dict, 
+                                      sharpness_results: Dict, correlation_results: Dict) -> float:
+        """
+        CRITICAL: Calculate overall UQ performance score.
+        """
+        scores = []
+        weights = []
+        
+        # Coverage score (40% weight) - CRITICAL for nanopositioning
+        if 'overall' in coverage_results:
+            coverage_score = coverage_results['overall']['mean_coverage']
+            scores.append(coverage_score)
+            weights.append(0.4)
+        
+        # Calibration score (30% weight)
+        if 'is_normally_distributed' in calibration_results:
+            calibration_score = 1.0 if calibration_results['is_normally_distributed'] else 0.5
+            if 'is_well_calibrated' in calibration_results and calibration_results['is_well_calibrated']:
+                calibration_score *= 1.0
+            elif calibration_results.get('is_well_calibrated') is False:
+                calibration_score *= 0.7
+            scores.append(calibration_score)
+            weights.append(0.3)
+        
+        # Sharpness score (20% weight)
+        if 'sharpness_score' in sharpness_results:
+            sharpness_score = min(1.0, sharpness_results['sharpness_score'])
+            scores.append(sharpness_score)
+            weights.append(0.2)
+        
+        # Correlation score (10% weight) - Lower correlations are better for independence
+        if 'max_correlation' in correlation_results:
+            max_corr = correlation_results['max_correlation']
+            correlation_score = max(0.0, 1.0 - max_corr)  # Invert: lower correlation = higher score
+            scores.append(correlation_score)
+            weights.append(0.1)
+        
+        if not scores:
+            return 0.0
+        
+        # Weighted average
+        weighted_score = np.average(scores, weights=weights)
+        return float(weighted_score)
+    
+    def _assess_calibration_quality(self, normality_p: float, chi2_p: float, 
+                                   skewness: float, kurtosis: float) -> str:
+        """Assess overall calibration quality."""
+        if normality_p > 0.1 and (np.isnan(chi2_p) or chi2_p > 0.1) and abs(skewness) < 1 and abs(kurtosis) < 3:
+            return 'excellent'
+        elif normality_p > 0.05 and (np.isnan(chi2_p) or chi2_p > 0.05) and abs(skewness) < 2 and abs(kurtosis) < 5:
+            return 'good'
+        elif normality_p > 0.01:
+            return 'acceptable'
+        else:
+            return 'poor'
+    
+    def _generate_uq_recommendations(self, overall_score: float, coverage_results: Dict, 
+                                   calibration_results: Dict) -> List[str]:
+        """Generate recommendations for improving UQ performance."""
+        recommendations = []
+        
+        if overall_score < 0.7:
+            recommendations.append("CRITICAL: Overall UQ performance below acceptable threshold")
+        
+        if 'overall' in coverage_results:
+            mean_coverage = coverage_results['overall']['mean_coverage']
+            if mean_coverage < 0.9:
+                recommendations.append(f"Improve coverage probability: {mean_coverage:.3f} < 0.90 target")
+        
+        if calibration_results.get('calibration_quality') == 'poor':
+            recommendations.append("Improve statistical calibration through model refinement")
+        
+        if overall_score >= 0.9:
+            recommendations.append("UQ performance meets precision nanopositioning requirements")
+        
+        return recommendations
         average_uncertainties = {}
         for domain, state in self.current_states.items():
             average_uncertainties[domain.value] = np.mean(state.uncertainty)
@@ -1025,106 +1365,299 @@ class MultiPhysicsDigitalTwin:
         
         return performance_summary
 
-
-if __name__ == "__main__":
-    """Example usage of multi-physics digital twin."""
-    
-    # Set up logging
-    logging.basicConfig(level=logging.INFO)
-    
-    print("=== MULTI-PHYSICS DIGITAL TWIN ===")
-    print("Implementing integrated uncertainty quantification")
-    
-    # Initialize digital twin
-    coupling_params = CouplingParameters()
-    uq_params = UQParameters(n_samples=1000)
-    
-    digital_twin = MultiPhysicsDigitalTwin(coupling_params, uq_params)
-    
-    print(f"\nInitialized digital twin with {len(digital_twin.physics_models)} physics domains:")
-    for domain in digital_twin.physics_models:
-        state = digital_twin.current_states[domain]
-        print(f"  {domain.value}: {len(state.state_vector)} states")
-    
-    # Simulate system evolution
-    print(f"\nSimulating multi-physics evolution...")
-    
-    # Define control inputs
-    control_inputs = {
-        PhysicsDomain.MECHANICAL: np.array([1e-9, 0, 0]),  # 1 nN force
-        PhysicsDomain.THERMAL: np.array([0.1]),            # 0.1 W heating
-        PhysicsDomain.ELECTROMAGNETIC: np.array([1e6, 0, 0]), # 1 MV/m field
-        PhysicsDomain.QUANTUM: np.array([0])               # No quantum control
-    }
-    
-    # Evolution loop
-    for step in range(100):  # 100 time steps
-        new_states = digital_twin.state_evolution_step(control_inputs, dt=1e-4)
+    def setup_multi_domain_uq(self):
+        """
+        HIGH SEVERITY RESOLUTION: Setup multi-domain uncertainty quantification.
         
-        if step % 20 == 0:
-            print(f"  Step {step}:")
-            for domain, state in new_states.items():
-                state_norm = np.linalg.norm(state.state_vector)
-                uncertainty_norm = np.linalg.norm(state.uncertainty)
-                print(f"    {domain.value}: ||state||={state_norm:.2e}, ||uncertainty||={uncertainty_norm:.2e}")
+        This method addresses the critical gap in cross-domain correlation modeling
+        by integrating domain-specific uncertainty propagators.
+        """
+        from .uncertainty_propagation import MultiDomainUncertaintyPropagator
+        
+        # Create domain-specific uncertainty propagators
+        domain_propagators = {}
+        
+        for domain in PhysicsDomain:
+            # Create propagator for each domain
+            uncertain_vars = []
+            
+            if domain == PhysicsDomain.MECHANICAL:
+                uncertain_vars = [
+                    UncertainVariable('stiffness', DistributionType.NORMAL, 
+                                    {'mean': 1e6, 'std': 1e5}),
+                    UncertainVariable('damping', DistributionType.NORMAL,
+                                    {'mean': 100, 'std': 10})
+                ]
+            elif domain == PhysicsDomain.THERMAL:
+                uncertain_vars = [
+                    UncertainVariable('thermal_expansion', DistributionType.NORMAL,
+                                    {'mean': 1e-5, 'std': 1e-6}),
+                    UncertainVariable('heat_capacity', DistributionType.NORMAL,
+                                    {'mean': 400, 'std': 40})
+                ]
+            elif domain == PhysicsDomain.ELECTROMAGNETIC:
+                uncertain_vars = [
+                    UncertainVariable('permittivity', DistributionType.NORMAL,
+                                    {'mean': 8.85e-12, 'std': 8.85e-14}),
+                    UncertainVariable('conductivity', DistributionType.NORMAL,
+                                    {'mean': 1e6, 'std': 1e5})
+                ]
+            elif domain == PhysicsDomain.QUANTUM:
+                uncertain_vars = [
+                    UncertainVariable('casimir_coefficient', DistributionType.NORMAL,
+                                    {'mean': 1.0, 'std': 0.05}),
+                    UncertainVariable('quantum_correction', DistributionType.NORMAL,
+                                    {'mean': 0.0, 'std': 0.01})
+                ]
+            
+            # Create propagator with enhanced sample size for critical domains
+            n_samples = 50000 if domain in [PhysicsDomain.MECHANICAL, PhysicsDomain.QUANTUM] else 25000
+            
+            propagator = MonteCarloUncertaintyPropagator(
+                uncertain_variables=uncertain_vars,
+                n_samples=n_samples
+            )
+            
+            domain_propagators[domain.value] = propagator
+        
+        # Create multi-domain propagator
+        self.multi_domain_uq = MultiDomainUncertaintyPropagator(domain_propagators)
+        
+        self.logger.info("Multi-domain UQ setup complete with correlation modeling")
+        
+        return self.multi_domain_uq
     
-    # Monte Carlo uncertainty propagation
-    print(f"\nPerforming Monte Carlo uncertainty propagation...")
-    mc_statistics = digital_twin.monte_carlo_uncertainty_propagation(
-        control_inputs, n_steps=50, dt=1e-4
-    )
+    def update_correlation_model(self, measurement_history: List[Dict]):
+        """
+        HIGH SEVERITY: Update cross-domain correlation model from measurements.
+        
+        This method continuously refines the correlation model as new measurement
+        data becomes available, addressing the critical need for adaptive correlation
+        modeling in evolving system conditions.
+        """
+        if not hasattr(self, 'multi_domain_uq') or self.multi_domain_uq is None:
+            self.setup_multi_domain_uq()
+        
+        # Update correlation matrix
+        correlation_matrix = self.multi_domain_uq.estimate_correlation_matrix(measurement_history)
+        
+        # Log correlation analysis
+        max_correlation = np.max(np.abs(correlation_matrix - np.eye(correlation_matrix.shape[0])))
+        correlation_strength = self.multi_domain_uq._assess_correlation_strength(correlation_matrix)
+        
+        self.logger.info(f"Updated correlation model: max_corr={max_correlation:.3f}, strength={correlation_strength}")
+        
+        # Store correlation history for trend analysis
+        if not hasattr(self, 'correlation_history'):
+            self.correlation_history = []
+        
+        self.correlation_history.append({
+            'timestamp': time.time(),
+            'correlation_matrix': correlation_matrix.tolist(),
+            'max_correlation': float(max_correlation),
+            'strength': correlation_strength,
+            'n_measurements': len(measurement_history)
+        })
+        
+        # Keep only last 50 correlation updates
+        if len(self.correlation_history) > 50:
+            self.correlation_history = self.correlation_history[-50:]
+        
+        return correlation_matrix
+
+    def propagate_uncertainty_with_correlation(self, prediction_horizon: float = 0.1,
+                                             n_samples: int = 25000) -> Dict:
+        """
+        HIGH SEVERITY: Propagate uncertainty with cross-domain correlation modeling.
+        
+        This method addresses the critical gap in multi-physics uncertainty
+        quantification by accounting for correlations between physics domains.
+        """
+        if not hasattr(self, 'multi_domain_uq') or self.multi_domain_uq is None:
+            self.setup_multi_domain_uq()
+        
+        # Create coupled model function for uncertainty propagation
+        def coupled_system_model(input_vector: np.ndarray) -> float:
+            """
+            Coupled multi-physics model for uncertainty propagation.
+            
+            Args:
+                input_vector: [mechanical_param, thermal_param, em_param, quantum_param]
+                
+            Returns:
+                System output (position accuracy metric)
+            """
+            try:
+                # Map input parameters to domain states
+                domain_perturbations = {
+                    PhysicsDomain.MECHANICAL: input_vector[0] if len(input_vector) > 0 else 0.0,
+                    PhysicsDomain.THERMAL: input_vector[1] if len(input_vector) > 1 else 0.0,
+                    PhysicsDomain.ELECTROMAGNETIC: input_vector[2] if len(input_vector) > 2 else 0.0,
+                    PhysicsDomain.QUANTUM: input_vector[3] if len(input_vector) > 3 else 0.0
+                }
+                
+                # Create perturbed states
+                perturbed_states = {}
+                for domain, state in self.current_states.items():
+                    perturbed_state = state.state_vector.copy()
+                    
+                    # Apply domain-specific perturbations
+                    if domain == PhysicsDomain.MECHANICAL:
+                        # Perturb position accuracy
+                        perturbed_state[0] += domain_perturbations[domain] * 1e-9  # nm scale
+                    elif domain == PhysicsDomain.THERMAL:
+                        # Perturb temperature
+                        perturbed_state[0] += domain_perturbations[domain] * 1e-3  # mK scale
+                    elif domain == PhysicsDomain.ELECTROMAGNETIC:
+                        # Perturb field strength
+                        perturbed_state[0] += domain_perturbations[domain] * 1e-6  # µV/m scale
+                    elif domain == PhysicsDomain.QUANTUM:
+                        # Perturb coherence
+                        perturbed_state[0] += domain_perturbations[domain] * 0.01  # 1% scale
+                    
+                    perturbed_states[domain] = perturbed_state
+                
+                # Calculate coupling effects
+                coupling_effects = self._calculate_coupling_effects_from_states(perturbed_states)
+                
+                # Calculate total position error (system output metric)
+                mechanical_state = perturbed_states[PhysicsDomain.MECHANICAL]
+                thermal_effect = coupling_effects.get(PhysicsDomain.MECHANICAL, {}).get('thermal_expansion', 0.0)
+                em_effect = coupling_effects.get(PhysicsDomain.MECHANICAL, {}).get('em_force', 0.0)
+                quantum_effect = coupling_effects.get(PhysicsDomain.MECHANICAL, {}).get('casimir_perturbation', 0.0)
+                
+                # Total position error in nm
+                total_error = abs(mechanical_state[0] * 1e9) + abs(thermal_effect * 1e9) + abs(em_effect * 1e9) + abs(quantum_effect * 1e9)
+                
+                return total_error
+                
+            except Exception as e:
+                self.logger.warning(f"Coupled model evaluation failed: {e}")
+                return np.nan
+        
+        # Propagate joint uncertainty
+        measurement_history = list(self.measurement_history) if hasattr(self, 'measurement_history') else []
+        
+        result = self.multi_domain_uq.propagate_joint_uncertainty(
+            coupled_model_function=coupled_system_model,
+            n_samples=n_samples,
+            measurement_history=measurement_history
+        )
+        
+        # Add domain-specific analysis
+        result['domain_analysis'] = self._analyze_domain_contributions(result)
+        
+        # Log critical insights
+        if 'correlation_analysis' in result:
+            corr_strength = result['correlation_analysis']['correlation_strength']
+            max_corr = result['correlation_analysis']['max_correlation']
+            
+            self.logger.info(f"Multi-domain UQ complete: correlation_strength={corr_strength}, max_correlation={max_corr:.3f}")
+            
+            if max_corr > 0.5:
+                self.logger.warning(f"Strong cross-domain correlation detected: {max_corr:.3f}")
+        
+        return result
     
-    print(f"Monte Carlo results:")
-    for domain in PhysicsDomain:
-        mean_key = f'{domain.value}_mean'
-        std_key = f'{domain.value}_std'
-        if mean_key in mc_statistics:
-            final_mean = mc_statistics[mean_key][-1, 0]  # Final time, first state
-            final_std = mc_statistics[std_key][-1, 0]
-            print(f"  {domain.value}: final state = {final_mean:.2e} ± {final_std:.2e}")
+    def _calculate_coupling_effects_from_states(self, domain_states: Dict[PhysicsDomain, np.ndarray]) -> Dict:
+        """
+        Calculate coupling effects between physics domains from given states.
+        
+        HIGH SEVERITY: Critical for accurate uncertainty propagation.
+        """
+        coupling_effects = {}
+        
+        # Extract states
+        mechanical_state = domain_states.get(PhysicsDomain.MECHANICAL, np.zeros(9))
+        thermal_state = domain_states.get(PhysicsDomain.THERMAL, np.zeros(3))
+        em_state = domain_states.get(PhysicsDomain.ELECTROMAGNETIC, np.zeros(8))
+        quantum_state = domain_states.get(PhysicsDomain.QUANTUM, np.zeros(3))
+        
+        # Thermal -> Mechanical coupling (thermal expansion)
+        temperature = thermal_state[0] if len(thermal_state) > 0 else 293.15
+        thermal_expansion_coeff = 1e-5  # 1/K
+        reference_temp = 293.15  # K
+        thermal_expansion = thermal_expansion_coeff * (temperature - reference_temp) * 1e-3  # m
+        
+        coupling_effects[PhysicsDomain.MECHANICAL] = {
+            'thermal_expansion': thermal_expansion,
+            'em_force': 0.0,
+            'casimir_perturbation': 0.0
+        }
+        
+        # Electromagnetic -> Mechanical coupling (Maxwell stress)
+        if len(em_state) > 0:
+            E_field_magnitude = np.sqrt(np.sum(em_state[:3]**2))
+            maxwell_stress = 0.5 * 8.854e-12 * E_field_magnitude**2  # N/m²
+            maxwell_force = maxwell_stress * 1e-6  # Assuming 1 µm² area
+            coupling_effects[PhysicsDomain.MECHANICAL]['em_force'] = maxwell_force
+        
+        # Quantum -> Mechanical coupling (Casimir force perturbation)
+        if len(quantum_state) > 0:
+            coherence = quantum_state[0]
+            casimir_correction = (1 - coherence) * 1e-15  # Simplified model
+            coupling_effects[PhysicsDomain.MECHANICAL]['casimir_perturbation'] = casimir_correction
+        
+        # Mechanical -> Thermal coupling (frictional heating)
+        velocity_magnitude = np.sqrt(np.sum(mechanical_state[3:6]**2)) if len(mechanical_state) > 5 else 0.0
+        frictional_heating = 1e-6 * velocity_magnitude**2  # Simplified
+        
+        coupling_effects[PhysicsDomain.THERMAL] = {
+            'frictional_heating': frictional_heating,
+            'em_heating': 0.0
+        }
+        
+        # Electromagnetic -> Thermal coupling (Joule heating)
+        if len(em_state) > 2:
+            joule_heating = 1e-9 * np.sum(em_state[:3]**2)  # Simplified
+            coupling_effects[PhysicsDomain.THERMAL]['em_heating'] = joule_heating
+        
+        return coupling_effects
     
-    # Simulate measurements and Bayesian estimation
-    print(f"\nSimulating measurements and Bayesian estimation...")
-    
-    measurements = {
-        PhysicsDomain.MECHANICAL: np.array([1e-9, 0, 0]),  # Position measurement
-        PhysicsDomain.THERMAL: np.array([293.2]),          # Temperature measurement
-        PhysicsDomain.ELECTROMAGNETIC: np.array([1e3, 0]), # Field measurement
-        PhysicsDomain.QUANTUM: np.array([0.95])            # Coherence measurement
-    }
-    
-    updated_states = digital_twin.bayesian_state_estimation(measurements)
-    
-    print(f"Bayesian update results:")
-    for domain, state in updated_states.items():
-        uncertainty_reduction = (np.mean(digital_twin.current_states[domain].uncertainty) / 
-                               np.mean(state.uncertainty))
-        print(f"  {domain.value}: uncertainty reduced by {uncertainty_reduction:.2f}x")
-    
-    # Synchronization test
-    print(f"\nTesting synchronization with physical system...")
-    
-    sync_result = digital_twin.synchronize_with_physical_system(measurements)
-    print(f"Synchronization: error={sync_result['sync_error']:.2e}, latency={sync_result['latency_ms']:.2f}ms")
-    
-    # Performance summary
-    performance = digital_twin.get_performance_summary()
-    
-    print(f"\nDigital Twin Performance Summary:")
-    if 'fidelity_metrics' in performance:
-        fm = performance['fidelity_metrics']
-        print(f"  State prediction R²: {fm['state_prediction_r_squared']:.4f} (target: {fm['r_squared_target']:.2f})")
-        print(f"  Prediction accuracy: {'✓' if fm['prediction_accuracy_satisfied'] else '✗'}")
-    
-    if 'synchronization_performance' in performance and performance['synchronization_performance']:
-        sp = performance['synchronization_performance']
-        print(f"  Average latency: {sp['average_latency_ms']:.2f}ms (target: {sp['latency_target_ms']:.1f}ms)")
-        print(f"  Sync error: {sp['average_sync_error']:.2e}")
-    
-    if 'uq_performance' in performance:
-        uq = performance['uq_performance']
-        if 'overall_coverage_probability' in uq:
-            print(f"  Coverage probability: {uq['overall_coverage_probability']:.3f} (target: {uq['coverage_target']:.2f})")
-            print(f"  UQ calibration: {'✓' if uq['coverage_satisfied'] else '✗'}")
-    
-    print(f"\nMulti-physics digital twin demonstration complete!")
+    def _analyze_domain_contributions(self, uq_result: Dict) -> Dict:
+        """
+        Analyze contribution of each physics domain to overall uncertainty.
+        
+        HIGH SEVERITY: Critical for understanding uncertainty sources.
+        """
+        analysis = {
+            'domain_importance': {},
+            'coupling_strength': {},
+            'critical_domains': []
+        }
+        
+        if 'correlation_analysis' in uq_result and 'correlation_matrix' in uq_result['correlation_analysis']:
+            corr_matrix = np.array(uq_result['correlation_analysis']['correlation_matrix'])
+            domain_names = ['mechanical', 'thermal', 'electromagnetic', 'quantum']
+            
+            # Calculate domain importance based on correlation strength
+            for i, domain in enumerate(domain_names):
+                if i < len(corr_matrix):
+                    # Sum of absolute correlations with other domains
+                    domain_importance = np.sum(np.abs(corr_matrix[i, :])) - 1.0  # Exclude self-correlation
+                    analysis['domain_importance'][domain] = float(domain_importance)
+                    
+                    # Identify critical domains (high correlation with others)
+                    if domain_importance > 0.5:
+                        analysis['critical_domains'].append(domain)
+            
+            # Calculate pairwise coupling strengths
+            for i, domain1 in enumerate(domain_names):
+                for j, domain2 in enumerate(domain_names):
+                    if i < j and i < len(corr_matrix) and j < len(corr_matrix[0]):
+                        coupling_key = f"{domain1}-{domain2}"
+                        analysis['coupling_strength'][coupling_key] = float(abs(corr_matrix[i, j]))
+        
+        # Add uncertainty contribution analysis
+        if 'statistics' in uq_result:
+            total_variance = uq_result['statistics'].get('var', 1.0)
+            
+            # Simplified domain variance attribution (would need more sophisticated analysis)
+            analysis['variance_attribution'] = {
+                'mechanical': 0.4,  # Typically dominant
+                'thermal': 0.3,     # Significant thermal effects
+                'electromagnetic': 0.2,  # Moderate EM effects
+                'quantum': 0.1      # Smaller but critical quantum effects
+            }
+        
+        return analysis

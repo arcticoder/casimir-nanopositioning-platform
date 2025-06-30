@@ -68,10 +68,14 @@ class DistributionType(Enum):
 class UncertaintyParameters:
     """Parameters for uncertainty propagation."""
     
-    # Monte Carlo parameters
-    n_samples: int = 10000
+    # Monte Carlo parameters - CRITICAL: Increased for nanopositioning precision
+    n_samples: int = 50000  # Increased from 10,000 for CRITICAL precision requirements
     random_seed: Optional[int] = 42
     confidence_level: float = 0.95
+    # CRITICAL: Auto-convergence parameters
+    auto_convergence: bool = True
+    convergence_check_interval: int = 5000  # Check every 5k samples
+    min_samples: int = 10000  # Minimum before convergence check
     
     # Polynomial Chaos parameters
     pce_order: int = 3
@@ -87,9 +91,13 @@ class UncertaintyParameters:
     morris_n_levels: int = 10
     morris_grid_jump: int = 5
     
-    # Convergence criteria
-    convergence_tolerance: float = 1e-6
-    max_evaluations: int = 100000
+    # Convergence criteria - CRITICAL: Tightened for precision applications
+    convergence_tolerance: float = 1e-8  # Tightened from 1e-6 for CRITICAL precision
+    max_evaluations: int = 500000  # Increased limit for convergence
+    # CRITICAL: Numerical stability parameters
+    numerical_stability_check: bool = True
+    overflow_threshold: float = 1e100
+    underflow_threshold: float = 1e-100
     
     # Parallel processing
     n_jobs: int = -1  # Use all available cores
@@ -282,24 +290,65 @@ class MonteCarloUncertaintyPropagator(UncertaintyPropagator):
         
     def propagate(self, model_function: Callable) -> Dict:
         """
-        Monte Carlo uncertainty propagation.
+        CRITICAL: Monte Carlo uncertainty propagation with convergence validation.
         
-        Args:
-            model_function: Function to evaluate f(x₁, x₂, ..., xₙ)
-            
-        Returns:
-            Dictionary with uncertainty propagation results
+        Enhanced implementation with automatic convergence checking and numerical
+        stability monitoring for precision nanopositioning applications.
         """
         start_time = time.time()
         
-        # Generate samples
-        samples = self._generate_samples()
+        # CRITICAL: Initialize convergence tracking
+        converged = False
+        convergence_history = []
+        n_current = self.params.min_samples
         
-        # Evaluate model
-        if self.params.use_parallel and self.params.n_jobs != 1:
-            outputs = self._parallel_evaluation(model_function, samples)
-        else:
-            outputs = self._sequential_evaluation(model_function, samples)
+        # Initial sample generation
+        samples = self._generate_samples(n_current)
+        outputs = []
+        
+        # CRITICAL: Iterative sampling with convergence checking
+        while not converged and n_current <= self.params.max_evaluations:
+            # Evaluate model for current batch
+            if self.params.use_parallel and self.params.n_jobs != 1:
+                batch_outputs = self._parallel_evaluation(model_function, samples)
+            else:
+                batch_outputs = self._sequential_evaluation(model_function, samples)
+            
+            outputs.extend(batch_outputs)
+            
+            # CRITICAL: Numerical stability check
+            if self.params.numerical_stability_check:
+                stability_issues = self._check_numerical_stability(outputs)
+                if stability_issues['has_issues']:
+                    self.logger.warning(f"Numerical stability issues detected: {stability_issues}")
+            
+            # CRITICAL: Convergence check
+            if self.params.auto_convergence and n_current >= self.params.min_samples:
+                convergence_result = self._check_convergence(outputs)
+                convergence_history.append(convergence_result)
+                
+                if convergence_result['converged']:
+                    converged = True
+                    self.logger.info(f"Monte Carlo converged at {n_current} samples")
+                elif n_current < self.params.max_evaluations:
+                    # Generate additional samples
+                    additional_samples = self.params.convergence_check_interval
+                    new_samples = self._generate_samples(additional_samples)
+                    samples = np.vstack([samples, new_samples])
+                    n_current += additional_samples
+                else:
+                    self.logger.warning(f"Maximum evaluations reached without convergence")
+                    break
+            else:
+                converged = True  # Skip convergence check if disabled
+        
+        # Convert to numpy array for processing
+        outputs = np.array(outputs)
+        
+        # CRITICAL: Final validation of results
+        final_validation = self._validate_final_results(outputs)
+        if not final_validation['valid']:
+            self.logger.error(f"Final validation failed: {final_validation['reason']}")
         
         # Compute statistics
         statistics = self._compute_statistics(outputs)
@@ -319,10 +368,14 @@ class MonteCarloUncertaintyPropagator(UncertaintyPropagator):
         return {
             'method': 'monte_carlo',
             'n_samples': len(outputs),
+            'converged': converged,
+            'convergence_history': convergence_history,
+            'numerical_stability': self._check_numerical_stability(outputs),
+            'final_validation': final_validation,
             'statistics': statistics,
             'confidence_intervals': confidence_intervals,
             'convergence': convergence_analysis,
-            'samples': samples,
+            'samples': samples[:len(outputs)],  # Trim to actual evaluations
             'outputs': outputs,
             'evaluation_time_s': evaluation_time,
             'samples_per_second': len(outputs) / evaluation_time if evaluation_time > 0 else 0
@@ -514,6 +567,215 @@ class MonteCarloUncertaintyPropagator(UncertaintyPropagator):
             required_n = (z_score * sample_std / target_absolute_error)**2
         
         return max(int(required_n), len(outputs))
+    
+    def _check_convergence(self, outputs: np.ndarray) -> Dict:
+        """
+        CRITICAL: Check Monte Carlo convergence using multiple criteria.
+        
+        Implements rigorous convergence assessment for precision nanopositioning
+        applications requiring validated uncertainty bounds.
+        """
+        if len(outputs) < self.params.min_samples:
+            return {'converged': False, 'reason': 'insufficient_samples'}
+        
+        # Statistical convergence criteria
+        n = len(outputs)
+        mean_estimate = np.mean(outputs)
+        std_estimate = np.std(outputs, ddof=1)
+        
+        # 1. Standard error convergence
+        standard_error = std_estimate / np.sqrt(n)
+        relative_error = standard_error / np.abs(mean_estimate) if mean_estimate != 0 else standard_error
+        
+        se_converged = relative_error < self.params.convergence_tolerance
+        
+        # 2. Running average convergence (last 20% vs total)
+        split_point = int(0.8 * n)
+        if split_point < n // 2:
+            running_converged = False
+        else:
+            early_mean = np.mean(outputs[:split_point])
+            late_mean = np.mean(outputs[split_point:])
+            running_diff = np.abs(late_mean - early_mean) / np.abs(early_mean) if early_mean != 0 else np.abs(late_mean)
+            running_converged = running_diff < self.params.convergence_tolerance
+        
+        # 3. Batch convergence (compare last 1000 samples with total)
+        if n > 2000:
+            batch_mean = np.mean(outputs[-1000:])
+            total_mean = np.mean(outputs)
+            batch_diff = np.abs(batch_mean - total_mean) / np.abs(total_mean) if total_mean != 0 else np.abs(batch_mean)
+            batch_converged = batch_diff < self.params.convergence_tolerance
+        else:
+            batch_converged = True  # Not enough samples for batch test
+        
+        # Overall convergence
+        converged = se_converged and running_converged and batch_converged
+        
+        return {
+            'converged': converged,
+            'n_samples': n,
+            'standard_error_converged': se_converged,
+            'running_average_converged': running_converged,
+            'batch_converged': batch_converged,
+            'relative_error': relative_error,
+            'standard_error': standard_error,
+            'confidence_bound': 1.96 * standard_error  # 95% confidence
+        }
+    
+    def _check_numerical_stability(self, outputs: np.ndarray) -> Dict:
+        """
+        CRITICAL: Check for numerical stability issues.
+        
+        Identifies overflow, underflow, and other numerical problems that
+        could compromise uncertainty quantification accuracy.
+        """
+        outputs_array = np.array(outputs)
+        
+        # Check for numerical issues
+        has_inf = np.any(np.isinf(outputs_array))
+        has_nan = np.any(np.isnan(outputs_array))
+        has_overflow = np.any(np.abs(outputs_array) > self.params.overflow_threshold)
+        has_underflow = np.any((outputs_array != 0) & (np.abs(outputs_array) < self.params.underflow_threshold))
+        
+        # Dynamic range check
+        valid_outputs = outputs_array[np.isfinite(outputs_array)]
+        if len(valid_outputs) > 0:
+            max_val = np.max(np.abs(valid_outputs))
+            min_val = np.min(np.abs(valid_outputs[valid_outputs != 0])) if np.any(valid_outputs != 0) else 1.0
+            dynamic_range = max_val / min_val if min_val > 0 else np.inf
+        else:
+            dynamic_range = 0
+        
+        # Condition number estimate (if sufficient samples)
+        condition_estimate = np.inf
+        if len(valid_outputs) > 10:
+            # Simple condition estimate based on sample statistics
+            sample_std = np.std(valid_outputs)
+            sample_mean = np.mean(valid_outputs)
+            if sample_std > 0 and sample_mean != 0:
+                condition_estimate = np.abs(sample_mean) / sample_std
+        
+        has_issues = has_inf or has_nan or has_overflow or has_underflow or dynamic_range > 1e12
+        
+        return {
+            'has_issues': has_issues,
+            'has_inf': has_inf,
+            'has_nan': has_nan,
+            'has_overflow': has_overflow,
+            'has_underflow': has_underflow,
+            'dynamic_range': dynamic_range,
+            'condition_estimate': condition_estimate,
+            'valid_fraction': len(valid_outputs) / len(outputs_array) if len(outputs_array) > 0 else 0,
+            'recommendations': self._get_stability_recommendations(has_inf, has_nan, has_overflow, has_underflow, dynamic_range)
+        }
+    
+    def _get_stability_recommendations(self, has_inf: bool, has_nan: bool, 
+                                     has_overflow: bool, has_underflow: bool, 
+                                     dynamic_range: float) -> List[str]:
+        """Get recommendations for numerical stability issues."""
+        recommendations = []
+        
+        if has_inf:
+            recommendations.append("Use log-space calculations to prevent infinite values")
+        if has_nan:
+            recommendations.append("Add input validation and handle edge cases")
+        if has_overflow:
+            recommendations.append("Scale down model inputs or use higher precision arithmetic")
+        if has_underflow:
+            recommendations.append("Increase numerical precision or adjust model scaling")
+        if dynamic_range > 1e10:
+            recommendations.append("Consider log-normal or scaled input distributions")
+        
+        return recommendations
+    
+    def _validate_final_results(self, outputs: np.ndarray) -> Dict:
+        """
+        CRITICAL: Final validation of Monte Carlo results.
+        
+        Ensures that the uncertainty quantification results meet precision
+        requirements for nanopositioning applications.
+        """
+        valid_outputs = outputs[np.isfinite(outputs)]
+        
+        # Basic validity checks
+        if len(valid_outputs) == 0:
+            return {'valid': False, 'reason': 'no_valid_outputs'}
+        
+        if len(valid_outputs) < 0.9 * len(outputs):
+            return {'valid': False, 'reason': 'excessive_invalid_outputs', 
+                   'valid_fraction': len(valid_outputs) / len(outputs)}
+        
+        # Statistical validity
+        mean_val = np.mean(valid_outputs)
+        std_val = np.std(valid_outputs, ddof=1)
+        
+        # Coefficient of variation check
+        if mean_val != 0:
+            cv = std_val / np.abs(mean_val)
+            if cv > 10:  # Excessive variability
+                return {'valid': False, 'reason': 'excessive_variability', 'cv': cv}
+        
+        # Sample size adequacy
+        if len(valid_outputs) < self.params.min_samples:
+            return {'valid': False, 'reason': 'insufficient_valid_samples', 
+                   'valid_samples': len(valid_outputs)}
+        
+        # Distribution shape checks (normality test for large samples)
+        from scipy import stats
+        if len(valid_outputs) > 5000:
+            # Shapiro-Wilk test on subsample (max 5000 samples)
+            test_sample = np.random.choice(valid_outputs, size=min(5000, len(valid_outputs)), replace=False)
+            _, p_value = stats.shapiro(test_sample)
+            
+            # If p < 0.01, likely non-normal - check for reasonableness
+            if p_value < 0.01:
+                # Check for extreme skewness or kurtosis
+                skewness = stats.skew(valid_outputs)
+                kurtosis = stats.kurtosis(valid_outputs)
+                
+                if np.abs(skewness) > 5 or np.abs(kurtosis) > 10:
+                    return {'valid': False, 'reason': 'extreme_distribution_shape',
+                           'skewness': skewness, 'kurtosis': kurtosis}
+        
+        return {
+            'valid': True,
+            'valid_fraction': len(valid_outputs) / len(outputs),
+            'mean': mean_val,
+            'std': std_val,
+            'cv': std_val / np.abs(mean_val) if mean_val != 0 else np.inf
+        }
+    
+    def _generate_samples(self, n_samples: Optional[int] = None) -> np.ndarray:
+        """Generate samples from uncertain variables with numerical stability."""
+        if n_samples is None:
+            n_samples = self.params.n_samples
+            
+        n_vars = len(self.uncertain_variables)
+        samples = np.zeros((n_samples, n_vars))
+        
+        for i, variable in enumerate(self.uncertain_variables):
+            try:
+                var_samples = variable.sample(n_samples, random_state=self.random_state)
+                
+                # CRITICAL: Numerical stability check for samples
+                if not np.all(np.isfinite(var_samples)):
+                    self.logger.warning(f"Non-finite samples detected for variable {variable.name}")
+                    # Replace non-finite values with distribution mean
+                    finite_mask = np.isfinite(var_samples)
+                    if np.any(finite_mask):
+                        replacement_value = np.mean(var_samples[finite_mask])
+                    else:
+                        replacement_value = variable.parameters.get('mean', 0)
+                    var_samples[~finite_mask] = replacement_value
+                
+                samples[:, i] = var_samples
+                
+            except Exception as e:
+                self.logger.error(f"Error sampling variable {variable.name}: {e}")
+                # Fallback to normal distribution
+                samples[:, i] = self.random_state.normal(0, 1, n_samples)
+        
+        return samples
 
 class LatinHypercubeUncertaintyPropagator(UncertaintyPropagator):
     """
@@ -719,6 +981,343 @@ class LatinHypercubeUncertaintyPropagator(UncertaintyPropagator):
             'space_filling_quality': np.mean(uniformity_scores) * (min_distance / avg_distance)
         }
 
+class MultiDomainUncertaintyPropagator:
+    """
+    HIGH SEVERITY RESOLUTION: Multi-domain uncertainty propagation with correlation modeling.
+    
+    This class addresses the critical need for cross-domain uncertainty correlation
+    in multi-physics systems where mechanical, thermal, electromagnetic, and quantum
+    domains are coupled.
+    """
+    
+    def __init__(self, domain_propagators: Dict[str, UncertaintyPropagator]):
+        """
+        Initialize multi-domain uncertainty propagator.
+        
+        Args:
+            domain_propagators: Dictionary of domain-specific uncertainty propagators
+        """
+        self.domain_propagators = domain_propagators
+        self.correlation_matrix = None
+        self.joint_samples = None
+        self.logger = logging.getLogger(__name__)
+    
+    def estimate_correlation_matrix(self, measurement_history: List[Dict]) -> np.ndarray:
+        """
+        HIGH SEVERITY: Estimate cross-domain correlation matrix from measurement data.
+        
+        This addresses the critical gap in correlation modeling between physics domains.
+        """
+        if len(measurement_history) < 20:
+            self.logger.warning("Insufficient data for correlation estimation")
+            return np.eye(len(self.domain_propagators))
+        
+        # Extract domain measurements
+        domain_names = list(self.domain_propagators.keys())
+        domain_data = {name: [] for name in domain_names}
+        
+        for entry in measurement_history[-100:]:  # Use last 100 measurements
+            measurements = entry.get('measurements', {})
+            
+            # Convert PhysicsDomain keys to strings if needed
+            for domain_key, measurement in measurements.items():
+                domain_str = domain_key.value if hasattr(domain_key, 'value') else str(domain_key)
+                if domain_str in domain_data:
+                    if np.isscalar(measurement):
+                        domain_data[domain_str].append(measurement)
+                    else:
+                        # Use first component if vector
+                        domain_data[domain_str].append(np.asarray(measurement).flatten()[0])
+        
+        # Ensure equal length data
+        min_length = min(len(data) for data in domain_data.values() if data)
+        if min_length < 10:
+            self.logger.warning(f"Insufficient data for correlation estimation: {min_length} samples")
+            return np.eye(len(domain_names))
+        
+        # Create data matrix
+        data_matrix = []
+        valid_domains = []
+        
+        for domain_name in domain_names:
+            if len(domain_data[domain_name]) >= min_length:
+                domain_array = np.array(domain_data[domain_name][:min_length])
+                
+                # Standardize data
+                if np.std(domain_array) > 0:
+                    domain_array = (domain_array - np.mean(domain_array)) / np.std(domain_array)
+                
+                data_matrix.append(domain_array)
+                valid_domains.append(domain_name)
+        
+        if len(data_matrix) < 2:
+            return np.eye(len(domain_names))
+        
+        data_matrix = np.array(data_matrix)
+        
+        # Calculate correlation matrix
+        try:
+            correlation_matrix = np.corrcoef(data_matrix)
+            
+            # Ensure positive definite (regularize if needed)
+            eigenvals, eigenvecs = np.linalg.eigh(correlation_matrix)
+            min_eigenval = np.min(eigenvals)
+            
+            if min_eigenval < 1e-6:
+                # Regularize by adding small diagonal term
+                regularization = 1e-6 - min_eigenval + 1e-8
+                correlation_matrix += regularization * np.eye(correlation_matrix.shape[0])
+                self.logger.info(f"Regularized correlation matrix with λ={regularization:.2e}")
+            
+            # Expand to full size if some domains were missing
+            if len(valid_domains) < len(domain_names):
+                full_correlation = np.eye(len(domain_names))
+                valid_indices = [domain_names.index(name) for name in valid_domains]
+                
+                for i, idx_i in enumerate(valid_indices):
+                    for j, idx_j in enumerate(valid_indices):
+                        full_correlation[idx_i, idx_j] = correlation_matrix[i, j]
+                
+                correlation_matrix = full_correlation
+            
+            self.correlation_matrix = correlation_matrix
+            
+            self.logger.info(f"Estimated correlation matrix from {min_length} samples")
+            self.logger.debug(f"Max off-diagonal correlation: {np.max(np.abs(correlation_matrix - np.eye(len(domain_names)))):.3f}")
+            
+            return correlation_matrix
+            
+        except Exception as e:
+            self.logger.error(f"Correlation estimation failed: {e}")
+            return np.eye(len(domain_names))
+    
+    def generate_correlated_samples(self, n_samples: int, 
+                                  correlation_matrix: Optional[np.ndarray] = None) -> Dict[str, np.ndarray]:
+        """
+        HIGH SEVERITY: Generate correlated samples across domains.
+        
+        Uses Cholesky decomposition to generate samples that preserve
+        cross-domain correlation structure.
+        """
+        if correlation_matrix is None:
+            correlation_matrix = self.correlation_matrix
+            
+        if correlation_matrix is None:
+            correlation_matrix = np.eye(len(self.domain_propagators))
+        
+        domain_names = list(self.domain_propagators.keys())
+        n_domains = len(domain_names)
+        
+        try:
+            # Cholesky decomposition for correlated sampling
+            L = np.linalg.cholesky(correlation_matrix)
+            
+            # Generate independent standard normal samples
+            independent_samples = np.random.standard_normal((n_samples, n_domains))
+            
+            # Transform to correlated samples
+            correlated_samples = independent_samples @ L.T
+            
+            # Transform to domain-specific distributions
+            domain_samples = {}
+            
+            for i, domain_name in enumerate(domain_names):
+                propagator = self.domain_propagators[domain_name]
+                
+                # Get standard normal samples for this domain
+                std_normal_samples = correlated_samples[:, i]
+                
+                # Transform to domain distribution (simplified - assumes normal)
+                if hasattr(propagator, 'uncertain_variables') and propagator.uncertain_variables:
+                    # Use first uncertain variable as representative
+                    var = propagator.uncertain_variables[0]
+                    
+                    if var.distribution == DistributionType.NORMAL:
+                        mean = var.parameters.get('mean', 0)
+                        std = var.parameters.get('std', 1)
+                        domain_samples[domain_name] = mean + std * std_normal_samples
+                    elif var.distribution == DistributionType.UNIFORM:
+                        low = var.parameters.get('low', -1)
+                        high = var.parameters.get('high', 1)
+                        # Transform normal to uniform using CDF
+                        from scipy.stats import norm
+                        uniform_samples = norm.cdf(std_normal_samples)
+                        domain_samples[domain_name] = low + (high - low) * uniform_samples
+                    else:
+                        # Fallback to normal
+                        domain_samples[domain_name] = std_normal_samples
+                else:
+                    # No variables defined, use standard normal
+                    domain_samples[domain_name] = std_normal_samples
+                    
+            self.joint_samples = domain_samples
+            
+            return domain_samples
+            
+        except np.linalg.LinAlgError as e:
+            self.logger.error(f"Cholesky decomposition failed: {e}. Using independent samples.")
+            
+            # Fallback to independent samples
+            domain_samples = {}
+            for domain_name in domain_names:
+                domain_samples[domain_name] = np.random.standard_normal(n_samples)
+            
+            return domain_samples
+    
+    def propagate_joint_uncertainty(self, coupled_model_function: Callable, 
+                                  n_samples: int = 10000,
+                                  measurement_history: Optional[List[Dict]] = None) -> Dict:
+        """
+        HIGH SEVERITY: Propagate uncertainty accounting for cross-domain correlations.
+        
+        This method addresses the critical need for system-level uncertainty
+        quantification in multi-physics systems.
+        """
+        start_time = time.time()
+        
+        # Estimate correlations if measurement history is provided
+        if measurement_history is not None:
+            correlation_matrix = self.estimate_correlation_matrix(measurement_history)
+        else:
+            correlation_matrix = self.correlation_matrix or np.eye(len(self.domain_propagators))
+        
+        # Generate correlated samples
+        correlated_samples = self.generate_correlated_samples(n_samples, correlation_matrix)
+        
+        # Evaluate coupled model
+        outputs = []
+        valid_evaluations = 0
+        
+        for i in range(n_samples):
+            try:
+                # Create input vector from correlated samples
+                input_vector = []
+                for domain_name in self.domain_propagators.keys():
+                    input_vector.append(correlated_samples[domain_name][i])
+                
+                # Evaluate coupled model
+                output = coupled_model_function(np.array(input_vector))
+                
+                if np.isfinite(output):
+                    outputs.append(output)
+                    valid_evaluations += 1
+                else:
+                    outputs.append(np.nan)
+                    
+            except Exception as e:
+                outputs.append(np.nan)
+                
+        outputs = np.array(outputs)
+        valid_outputs = outputs[np.isfinite(outputs)]
+        
+        if len(valid_outputs) == 0:
+            return {'error': 'no_valid_outputs', 'total_samples': n_samples}
+        
+        # Calculate statistics
+        statistics = {
+            'mean': np.mean(valid_outputs),
+            'std': np.std(valid_outputs, ddof=1),
+            'var': np.var(valid_outputs, ddof=1),
+            'min': np.min(valid_outputs),
+            'max': np.max(valid_outputs),
+            'median': np.median(valid_outputs),
+            'q25': np.percentile(valid_outputs, 25),
+            'q75': np.percentile(valid_outputs, 75),
+            'skewness': float(self._calculate_skewness(valid_outputs)),
+            'kurtosis': float(self._calculate_kurtosis(valid_outputs))
+        }
+        
+        # Confidence intervals
+        confidence_level = 0.95
+        alpha = 1 - confidence_level
+        lower_percentile = 100 * (alpha / 2)
+        upper_percentile = 100 * (1 - alpha / 2)
+        
+        confidence_intervals = {
+            f'{confidence_level*100:.0f}%': {
+                'lower': np.percentile(valid_outputs, lower_percentile),
+                'upper': np.percentile(valid_outputs, upper_percentile)
+            }
+        }
+        
+        # Correlation analysis
+        correlation_analysis = {
+            'correlation_matrix': correlation_matrix.tolist(),
+            'max_correlation': float(np.max(np.abs(correlation_matrix - np.eye(correlation_matrix.shape[0])))),
+            'correlation_strength': self._assess_correlation_strength(correlation_matrix),
+            'effective_dimensions': float(np.trace(correlation_matrix))  # Effective dimensionality
+        }
+        
+        evaluation_time = time.time() - start_time
+        
+        return {
+            'method': 'joint_multi_domain',
+            'n_samples': n_samples,
+            'valid_evaluations': valid_evaluations,
+            'success_rate': valid_evaluations / n_samples,
+            'statistics': statistics,
+            'confidence_intervals': confidence_intervals,
+            'correlation_analysis': correlation_analysis,
+            'correlated_samples': {k: v.tolist() for k, v in correlated_samples.items()},
+            'outputs': valid_outputs.tolist(),
+            'evaluation_time_s': evaluation_time,
+            'numerical_stability': {
+                'finite_fraction': valid_evaluations / n_samples,
+                'has_issues': valid_evaluations < 0.9 * n_samples
+            }
+        }
+    
+    def _calculate_skewness(self, data: np.ndarray) -> float:
+        """Calculate sample skewness."""
+        n = len(data)
+        if n < 3:
+            return 0.0
+        
+        mean = np.mean(data)
+        std = np.std(data, ddof=1)
+        
+        if std == 0:
+            return 0.0
+        
+        skew = np.mean(((data - mean) / std) ** 3)
+        # Bias correction
+        skew_corrected = skew * np.sqrt(n * (n - 1)) / (n - 2)
+        
+        return skew_corrected
+    
+    def _calculate_kurtosis(self, data: np.ndarray) -> float:
+        """Calculate sample kurtosis (excess kurtosis)."""
+        n = len(data)
+        if n < 4:
+            return 0.0
+        
+        mean = np.mean(data)
+        std = np.std(data, ddof=1)
+        
+        if std == 0:
+            return 0.0
+        
+        kurt = np.mean(((data - mean) / std) ** 4) - 3  # Excess kurtosis
+        
+        # Bias correction
+        kurt_corrected = (n - 1) / ((n - 2) * (n - 3)) * ((n + 1) * kurt + 6)
+        
+        return kurt_corrected
+    
+    def _assess_correlation_strength(self, correlation_matrix: np.ndarray) -> str:
+        """Assess overall correlation strength in the system."""
+        off_diagonal = correlation_matrix - np.eye(correlation_matrix.shape[0])
+        max_corr = np.max(np.abs(off_diagonal))
+        
+        if max_corr < 0.1:
+            return 'negligible'
+        elif max_corr < 0.3:
+            return 'weak'
+        elif max_corr < 0.7:
+            return 'moderate'
+        else:
+            return 'strong'
+
 class UncertaintyPropagationSystem:
     """
     Comprehensive uncertainty propagation system with multiple methods.
@@ -810,7 +1409,10 @@ class UncertaintyPropagationSystem:
     
     def sensitivity_analysis(self, model_function: Callable) -> Dict:
         """
-        Perform global sensitivity analysis using Sobol indices.
+        Perform global sensitivity analysis using simplified Sobol indices.
+        
+        Note: This is a simplified implementation. For production use,
+        install SALib: pip install SALib
         
         Args:
             model_function: Model function to analyze
@@ -818,6 +1420,22 @@ class UncertaintyPropagationSystem:
         Returns:
             Sensitivity analysis results
         """
+        try:
+            # Try to import SALib if available
+            from SALib.sample import saltelli
+            from SALib.analyze import sobol
+            use_salib = True
+        except ImportError:
+            self.logger.warning("SALib not available. Using simplified sensitivity analysis.")
+            use_salib = False
+        
+        if use_salib:
+            return self._salib_sensitivity_analysis(model_function)
+        else:
+            return self._simplified_sensitivity_analysis(model_function)
+    
+    def _salib_sensitivity_analysis(self, model_function: Callable) -> Dict:
+        """Sensitivity analysis using SALib."""
         from SALib.sample import saltelli
         from SALib.analyze import sobol
         
@@ -828,7 +1446,7 @@ class UncertaintyPropagationSystem:
             'bounds': []
         }
         
-        # Convert distributions to bounds (simplified)
+        # Convert distributions to bounds
         for var in self.uncertain_variables:
             if var.distribution == DistributionType.NORMAL:
                 # Use 3-sigma bounds for normal distribution
@@ -889,6 +1507,98 @@ class UncertaintyPropagationSystem:
         except Exception as e:
             self.logger.error(f"Sobol analysis failed: {e}")
             return {'error': f'sobol_analysis_failed: {e}'}
+    
+    def _simplified_sensitivity_analysis(self, model_function: Callable) -> Dict:
+        """
+        CRITICAL: Simplified sensitivity analysis for cases where SALib is not available.
+        
+        Uses variance-based sensitivity analysis with elementary effects.
+        """
+        n_vars = len(self.uncertain_variables)
+        n_samples = min(self.params.sobol_n_samples, 10000)  # Limit for simplified method
+        
+        # Generate base samples
+        base_samples = self._generate_samples(n_samples)
+        
+        # Evaluate base model outputs
+        base_outputs = []
+        for sample in base_samples:
+            try:
+                output = model_function(sample)
+                if np.isscalar(output):
+                    base_outputs.append(output)
+                else:
+                    base_outputs.append(np.asarray(output).item())
+            except:
+                base_outputs.append(np.nan)
+        
+        base_outputs = np.array(base_outputs)
+        valid_mask = ~np.isnan(base_outputs)
+        
+        if not np.any(valid_mask):
+            return {'error': 'no_valid_base_outputs'}
+        
+        base_outputs_clean = base_outputs[valid_mask]
+        base_samples_clean = base_samples[valid_mask]
+        base_variance = np.var(base_outputs_clean, ddof=1)
+        
+        if base_variance == 0:
+            return {'error': 'zero_variance'}
+        
+        # Elementary effects sensitivity analysis
+        first_order_indices = {}
+        total_order_indices = {}
+        
+        for i, var in enumerate(self.uncertain_variables):
+            # Perturb variable i while keeping others fixed
+            perturbed_samples = base_samples_clean.copy()
+            
+            # Resample variable i
+            var_samples = var.sample(len(base_samples_clean))
+            perturbed_samples[:, i] = var_samples
+            
+            # Evaluate perturbed outputs
+            perturbed_outputs = []
+            for sample in perturbed_samples:
+                try:
+                    output = model_function(sample)
+                    if np.isscalar(output):
+                        perturbed_outputs.append(output)
+                    else:
+                        perturbed_outputs.append(np.asarray(output).item())
+                except:
+                    perturbed_outputs.append(np.nan)
+            
+            perturbed_outputs = np.array(perturbed_outputs)
+            perturbed_valid = ~np.isnan(perturbed_outputs)
+            
+            if np.any(perturbed_valid):
+                # First-order sensitivity (main effect)
+                diff = perturbed_outputs[perturbed_valid] - base_outputs_clean[perturbed_valid]
+                first_order_var = np.var(diff, ddof=1) / 2  # Variance of differences / 2
+                first_order_indices[var.name] = first_order_var / base_variance
+                
+                # Total sensitivity (approximate)
+                total_var = np.var(perturbed_outputs[perturbed_valid], ddof=1)
+                total_order_indices[var.name] = 1 - (base_variance - first_order_var) / base_variance
+            else:
+                first_order_indices[var.name] = 0.0
+                total_order_indices[var.name] = 0.0
+        
+        # Normalize indices to ensure they sum to <= 1
+        total_first_order = sum(first_order_indices.values())
+        if total_first_order > 1:
+            for var_name in first_order_indices:
+                first_order_indices[var_name] /= total_first_order
+        
+        return {
+            'method': 'simplified_sobol',
+            'first_order': first_order_indices,
+            'total_order': total_order_indices,
+            'n_samples': len(base_outputs_clean),
+            'variance_explained': sum(first_order_indices.values()),
+            'note': 'Simplified implementation. Install SALib for full Sobol analysis.'
+        }
     
     def compare_methods(self, model_function: Callable, 
                        methods: Optional[List[UncertaintyMethod]] = None) -> Dict:
