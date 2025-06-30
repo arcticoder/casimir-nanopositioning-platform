@@ -5,32 +5,32 @@
 			"path": "."
 		},
 		{
-			"name": "unified-lqg-qft",
-			"path": "../unified-lqg-qft"
-		},
-		{
-			"name": "negative-energy-generator",
-			"path": "../negative-energy-generator"
-		},
-		{
-			"name": "warp-bubble-optimizer",
-			"path": "../warp-bubble-optimizer"
+			"name": "energy",
+			"path": "../energy"
 		},
 		{
 			"name": "lqg-anec-framework",
 			"path": "../lqg-anec-framework"
 		},
 		{
-			"name": "warp-field-coils",
-			"path": "../warp-field-coils"
-		},
-		{
-			"name": "energy",
-			"path": "../energy"
+			"name": "negative-energy-generator",
+			"path": "../negative-energy-generator"
 		},
 		{
 			"name": "unified-lqg",
 			"path": "../unified-lqg"
+		},
+		{
+			"name": "unified-lqg-qft",
+			"path": "../unified-lqg-qft"
+		},
+		{
+			"name": "warp-bubble-optimizer",
+			"path": "../warp-bubble-optimizer"
+		},
+		{
+			"name": "warp-field-coils",
+			"path": "../warp-field-coils"
 		}
 	],
 	"settings": {
