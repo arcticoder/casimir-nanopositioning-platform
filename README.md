@@ -11,29 +11,29 @@ This platform implements enhanced Casimir force calculations with quantum correc
 ### 1. Enhanced Casimir Force Calculations (`src/physics/enhanced_casimir_force.py`)
 
 **Basic Casimir Force:**
-```latex
+```math
 F_{\text{Casimir}} = -\frac{\pi^2 \hbar c}{240 d^4} \times A \times \eta_{\text{material}}
 ```
 
 **Polymer-Modified Casimir Force with Quantum Corrections:**
-```latex
+```math
 F_{\text{Casimir}}^{\text{poly}} = -\frac{\pi^2 \hbar c}{240 d^4} A \eta_{\text{material}} \times \frac{\sin^2(\mu_g\sqrt{k^2+m_g^2})}{k^2+m_g^2}
 ```
 
 **Metamaterial-Enhanced Casimir Force:**
-```latex
+```math
 F_{\text{Casimir}}^{\text{meta}} = -\frac{\pi^2 \hbar c}{240 d^4} A \times \frac{1}{\sqrt{|\varepsilon_{\text{eff}}|}} \times F(\omega)
 ```
 
 **Material Dispersion-Corrected Force:**
-```latex
+```math
 F_{\text{Casimir}}^{\text{disp}} = -\frac{\pi^2 \hbar c}{240 d^4} A \int_0^{\infty} \frac{d\omega}{2\pi} \text{Re}[\varepsilon(\omega)] g(\omega d/c)
 ```
 
 ### 2. Advanced Mechanical Stability Analysis (`src/mechanics/advanced_stability_analysis.py`)
 
 **Complete Mechanical Analysis:**
-```latex
+```math
 \begin{align}
 k_{\text{spring}} &= \frac{E t^3}{12(1-\nu^2) L^4} \\
 \frac{\partial F_{\text{Casimir}}}{\partial z} &= \frac{4F_{\text{Casimir}}}{z} \\
@@ -43,7 +43,7 @@ k_{\text{spring}} &= \frac{E t^3}{12(1-\nu^2) L^4} \\
 ```
 
 **Lyapunov Stability Analysis:**
-```latex
+```math
 \begin{align}
 V(\mathbf{x}) &= \mathbf{x}^T \mathbf{P} \mathbf{x} \\
 \mathbf{A}_{\text{cl}}^T \mathbf{P} + \mathbf{P} \mathbf{A}_{\text{cl}} &= -\mathbf{Q} \\
@@ -54,7 +54,7 @@ V(\mathbf{x}) &= \mathbf{x}^T \mathbf{P} \mathbf{x} \\
 ### 3. Enhanced Positioning Specifications (`src/control/enhanced_positioning_specs.py`)
 
 **UQ-Validated Specifications:**
-```latex
+```math
 \text{Enhanced Positioning Specs} = \begin{cases}
 \text{Resolution}: & 0.05 \text{ nm} \\
 \text{Angular Resolution}: & 1 \text{ μrad} \\
@@ -68,7 +68,7 @@ V(\mathbf{x}) &= \mathbf{x}^T \mathbf{P} \mathbf{x} \\
 ### 4. Advanced Interferometric Control (`src/control/advanced_interferometric_control.py`)
 
 **Complete Control System:**
-```latex
+```math
 \begin{align}
 \Delta\phi &= \frac{2\pi}{\lambda} \Delta n L \\
 \Delta n &= \frac{1}{2}n_0^3 r E \\
@@ -81,7 +81,7 @@ H(s) &= \frac{K_p s^2 + K_i s + K_d s^3}{s^3 + a_2 s^2 + a_1 s + a_0} \\
 ### 5. Multi-Material Thermal Compensation (`src/thermal/multi_material_thermal_compensation.py`)
 
 **Material-Specific Thermal Corrections:**
-```latex
+```math
 f_{\text{thermal}}(T, \text{material}) = \begin{cases}
 \text{Zerodur}: & 1 + 5 \times 10^{-9} \Delta T \\
 \text{Invar}: & 1 + 1.2 \times 10^{-6} \Delta T \\
