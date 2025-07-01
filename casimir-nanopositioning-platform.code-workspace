@@ -1,8 +1,16 @@
 {
 	"folders": [
 		{
+			"name": "casimir-anti-stiction-metasurface-coatings",
+			"path": "../casimir-anti-stiction-metasurface-coatings"
+		},
+		{
 			"name": "casimir-nanopositioning-platform (main)",
 			"path": "."
+		},
+		{
+			"name": "casimir-ultra-smooth-fabrication-platform",
+			"path": "../casimir-ultra-smooth-fabrication-platform"
 		},
 		{
 			"name": "energy",
