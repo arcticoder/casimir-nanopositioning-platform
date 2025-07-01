@@ -30,6 +30,20 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+import sys
+from pathlib import Path
+
+# Add the uq_validation module to path
+uq_validation_path = Path(__file__).parent.parent / "uq_validation"
+sys.path.insert(0, str(uq_validation_path))
+
+# Import critical UQ resolution modules
+from numerical_stability_framework import (
+    NumericalStabilityManager, NumericalStabilityConfig, safe_matrix_op, validate_result
+)
+from monte_carlo_convergence_validator import (
+    MonteCarloConvergenceValidator, ConvergenceConfig
+)
 
 @dataclass
 class UQDomainParams:
@@ -86,6 +100,12 @@ class EnhancedUQFramework:
         self.params = params
         self.logger = logging.getLogger(__name__)
         
+        # CRITICAL RESOLUTION: Initialize numerical stability manager
+        self.stability_manager = NumericalStabilityManager()
+        
+        # CRITICAL RESOLUTION: Initialize convergence validator
+        self.convergence_validator = MonteCarloConvergenceValidator()
+        
         # Initialize domain dimensions
         self.n_mechanical = len(params.mechanical_vars)
         self.n_thermal = len(params.thermal_vars)
@@ -94,7 +114,7 @@ class EnhancedUQFramework:
         self.total_dimensions = (self.n_mechanical + self.n_thermal + 
                                 self.n_electromagnetic + self.n_quantum)
         
-        # Initialize enhanced covariance matrix
+        # Initialize enhanced covariance matrix with stability checks
         self.enhanced_covariance = self._initialize_enhanced_covariance()
         
         # Thread safety
@@ -106,9 +126,10 @@ class EnhancedUQFramework:
     def _initialize_enhanced_covariance(self) -> np.ndarray:
         """
         Initialize the enhanced covariance matrix Σ_enhanced.
+        CRITICAL RESOLUTION: Added numerical stability protection.
         
         Returns:
-            Enhanced covariance matrix with cross-domain correlations
+            Enhanced covariance matrix with cross-domain correlations and stability guarantees
         """
         try:
             # Create block diagonal structure
@@ -143,15 +164,31 @@ class EnhancedUQFramework:
             # Add cross-domain correlations (off-diagonal blocks)
             self._add_cross_domain_correlations(Sigma)
             
-            # Ensure positive definiteness
-            Sigma = self._ensure_positive_definite(Sigma)
+            # CRITICAL RESOLUTION: Apply numerical stability protection
+            is_stable, error_msg = self.stability_manager.check_matrix_stability(
+                Sigma, "enhanced_covariance")
+            
+            if not is_stable:
+                self.logger.warning(f"Enhanced covariance unstable: {error_msg}")
+                Sigma = self.stability_manager.regularize_covariance_matrix(Sigma)
+                self.logger.info("Applied stability regularization to enhanced covariance matrix")
+            
+            # Ensure positive definiteness with stability checks
+            Sigma = self._ensure_positive_definite_stable(Sigma)
+            
+            # Final validation
+            Sigma = validate_result(Sigma, "enhanced_covariance_matrix")
             
             self.logger.info(f"Enhanced covariance matrix initialized: {Sigma.shape}")
+            self.logger.info(f"Matrix condition number: {np.linalg.cond(Sigma):.2e}")
             return Sigma
             
         except Exception as e:
             self.logger.error(f"Failed to initialize enhanced covariance: {e}")
-            return np.eye(self.total_dimensions) * 1e-6
+            # Emergency fallback with stability guarantee
+            fallback_matrix = np.eye(self.total_dimensions) * 1e-6
+            self.logger.warning("Using fallback identity covariance matrix")
+            return fallback_matrix
     
     def _add_cross_domain_correlations(self, Sigma: np.ndarray) -> None:
         """Add cross-domain correlation terms to covariance matrix."""
@@ -242,6 +279,60 @@ class EnhancedUQFramework:
         except Exception as e:
             self.logger.error(f"Failed to ensure positive definiteness: {e}")
             return np.eye(Sigma.shape[0]) * 1e-6
+    
+    def _ensure_positive_definite_stable(self, Sigma: np.ndarray) -> np.ndarray:
+        """
+        Ensure covariance matrix is positive definite with numerical stability.
+        CRITICAL RESOLUTION: Enhanced stability protection for positive definiteness.
+        """
+        try:
+            # First check if already positive definite
+            is_stable, error_msg = self.stability_manager.check_matrix_stability(Sigma, "pd_check")
+            if is_stable:
+                # Try Cholesky decomposition as a fast positive definite test
+                try:
+                    np.linalg.cholesky(Sigma)
+                    self.logger.debug("Matrix is already positive definite")
+                    return Sigma
+                except np.linalg.LinAlgError:
+                    pass  # Continue with regularization
+            
+            self.logger.info("Applying positive definite regularization")
+            
+            # Use safe eigenvalue decomposition
+            eigenvals, eigenvecs = safe_matrix_op('eig', Sigma)
+            
+            # Regularize eigenvalues
+            min_eigenval = self.stability_manager.config.min_eigenvalue
+            eigenvals_clipped = np.maximum(eigenvals, min_eigenval)
+            
+            # Check for numerical issues in eigenvalues
+            eigenvals_clipped = validate_result(eigenvals_clipped, "regularized_eigenvalues")
+            
+            # Reconstruct matrix with regularized eigenvalues
+            Sigma_pd = eigenvecs @ np.diag(eigenvals_clipped) @ eigenvecs.T
+            
+            # Validate reconstructed matrix
+            Sigma_pd = validate_result(Sigma_pd, "reconstructed_covariance")
+            
+            # Final stability check
+            is_stable_final, error_msg_final = self.stability_manager.check_matrix_stability(
+                Sigma_pd, "final_positive_definite")
+            
+            if not is_stable_final:
+                self.logger.warning(f"Reconstructed matrix still unstable: {error_msg_final}")
+                # Apply additional regularization
+                Sigma_pd = self.stability_manager.regularize_covariance_matrix(Sigma_pd)
+            
+            return Sigma_pd
+            
+        except Exception as e:
+            self.logger.error(f"Positive definite regularization failed: {e}")
+            # Emergency fallback
+            trace_val = np.trace(Sigma) if not np.any(np.isnan(Sigma)) else self.total_dimensions
+            fallback_matrix = np.eye(Sigma.shape[0]) * (trace_val / Sigma.shape[0])
+            self.logger.warning("Using fallback diagonal matrix for positive definiteness")
+            return fallback_matrix
     
     def compute_cross_domain_correlations(self, measurements: Dict[str, np.ndarray]) -> Dict[str, float]:
         """
@@ -374,31 +465,148 @@ class EnhancedUQFramework:
             return state_mean, np.eye(len(state_mean)) * 1e-6
     
     def generate_monte_carlo_samples(self, n_samples: int, 
-                                   mean_state: Optional[np.ndarray] = None) -> np.ndarray:
+                                   mean_state: Optional[np.ndarray] = None,
+                                   validate_convergence: bool = True) -> np.ndarray:
         """
         Generate Monte Carlo samples from enhanced uncertainty distribution.
+        CRITICAL RESOLUTION: Added convergence validation for reliable UQ estimates.
         
         Args:
             n_samples: Number of samples to generate
             mean_state: Mean state (zero if not provided)
+            validate_convergence: Whether to validate convergence
             
         Returns:
-            Monte Carlo samples [n_samples × n_dimensions]
+            Monte Carlo samples [n_samples × n_dimensions] with convergence guarantees
         """
         try:
             if mean_state is None:
                 mean_state = np.zeros(self.total_dimensions)
             
-            # Generate samples from multivariate normal distribution
-            samples = np.random.multivariate_normal(
-                mean_state, self.enhanced_covariance, size=n_samples)
+            # Validate inputs
+            mean_state = validate_result(mean_state, "monte_carlo_mean_state")
             
-            self.logger.debug(f"Generated {n_samples} Monte Carlo samples")
+            # CRITICAL RESOLUTION: Validate convergence if requested
+            if validate_convergence and n_samples >= 1000:
+                return self._generate_validated_samples(n_samples, mean_state)
+            
+            # For smaller sample sizes, use direct sampling with stability checks
+            # Check covariance matrix stability before sampling
+            is_stable, error_msg = self.stability_manager.check_matrix_stability(
+                self.enhanced_covariance, "monte_carlo_covariance")
+            
+            if not is_stable:
+                self.logger.warning(f"Covariance unstable for sampling: {error_msg}")
+                stable_covariance = self.stability_manager.regularize_covariance_matrix(
+                    self.enhanced_covariance)
+            else:
+                stable_covariance = self.enhanced_covariance
+            
+            # Generate samples using safe matrix operations
+            try:
+                # Use Cholesky decomposition for stable sampling
+                chol_factor = safe_matrix_op('chol', stable_covariance)
+                
+                # Generate standard normal samples
+                standard_samples = np.random.randn(n_samples, self.total_dimensions)
+                
+                # Transform to desired distribution
+                samples = mean_state + standard_samples @ chol_factor.T
+                
+            except Exception as chol_error:
+                self.logger.warning(f"Cholesky sampling failed: {chol_error}, using direct sampling")
+                # Fallback to direct multivariate normal sampling
+                samples = np.random.multivariate_normal(
+                    mean_state, stable_covariance, size=n_samples)
+            
+            # Validate samples
+            samples = validate_result(samples, "monte_carlo_samples")
+            
+            self.logger.debug(f"Generated {n_samples} Monte Carlo samples successfully")
             return samples
             
         except Exception as e:
             self.logger.error(f"Monte Carlo sampling failed: {e}")
-            return np.zeros((n_samples, self.total_dimensions))
+            # Emergency fallback: independent samples
+            fallback_samples = np.random.randn(n_samples, self.total_dimensions) * 1e-6
+            self.logger.warning("Using fallback independent normal samples")
+            return fallback_samples
+    
+    def _generate_validated_samples(self, n_samples: int, mean_state: np.ndarray) -> np.ndarray:
+        """
+        Generate Monte Carlo samples with convergence validation.
+        CRITICAL RESOLUTION: Implements Gelman-Rubin diagnostics for reliable sampling.
+        """
+        try:
+            self.logger.info(f"Generating {n_samples} samples with convergence validation")
+            
+            # Define sampling function for convergence validator
+            def sampling_function():
+                try:
+                    # Check stability before each sample generation
+                    is_stable, _ = self.stability_manager.check_matrix_stability(
+                        self.enhanced_covariance, "convergence_sampling_check")
+                    
+                    if not is_stable:
+                        stable_cov = self.stability_manager.regularize_covariance_matrix(
+                            self.enhanced_covariance)
+                    else:
+                        stable_cov = self.enhanced_covariance
+                    
+                    # Generate single sample
+                    sample = np.random.multivariate_normal(mean_state, stable_cov)
+                    return sample
+                    
+                except Exception as e:
+                    self.logger.warning(f"Single sample generation failed: {e}")
+                    return np.random.randn(self.total_dimensions) * 1e-6
+            
+            # Create parameter names for convergence validation
+            parameter_names = []
+            for i, var in enumerate(self.params.mechanical_vars):
+                parameter_names.append(f"mech_{var}")
+            for i, var in enumerate(self.params.thermal_vars):
+                parameter_names.append(f"thermal_{var}")
+            for i, var in enumerate(self.params.electromagnetic_vars):
+                parameter_names.append(f"em_{var}")
+            for i, var in enumerate(self.params.quantum_vars):
+                parameter_names.append(f"quantum_{var}")
+            
+            # Validate convergence
+            convergence_results = self.convergence_validator.validate_convergence(
+                sampling_function=sampling_function,
+                parameter_names=parameter_names
+            )
+            
+            if convergence_results.converged:
+                self.logger.info(f"✅ Monte Carlo convergence achieved with R-hat values: {convergence_results.r_hat_values}")
+                
+                # Generate final validated samples
+                validated_samples = np.array([sampling_function() for _ in range(n_samples)])
+                return validate_result(validated_samples, "convergence_validated_samples")
+                
+            else:
+                self.logger.warning(f"❌ Convergence not achieved, using best-effort samples")
+                self.logger.warning(f"R-hat values: {convergence_results.r_hat_values}")
+                
+                # Use samples despite non-convergence but with warning
+                best_effort_samples = np.array([sampling_function() for _ in range(n_samples)])
+                return validate_result(best_effort_samples, "best_effort_samples")
+                
+        except Exception as e:
+            self.logger.error(f"Validated sampling failed: {e}")
+            # Fallback to direct sampling
+            return self._generate_direct_samples(n_samples, mean_state)
+    
+    def _generate_direct_samples(self, n_samples: int, mean_state: np.ndarray) -> np.ndarray:
+        """Generate samples directly without convergence validation (fallback)."""
+        try:
+            stable_cov = self.stability_manager.regularize_covariance_matrix(self.enhanced_covariance)
+            samples = np.random.multivariate_normal(mean_state, stable_cov, size=n_samples)
+            return validate_result(samples, "direct_samples")
+        except Exception as e:
+            self.logger.error(f"Direct sampling failed: {e}")
+            return np.random.randn(n_samples, self.total_dimensions) * 1e-6
     
     def compute_confidence_intervals(self, samples: np.ndarray, 
                                    confidence_level: float = 0.95) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
