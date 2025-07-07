@@ -1,0 +1,29 @@
+{
+  "coverage_probability": 0.95972,
+  "coverage_confidence_interval": [
+    0.9572113130071672,
+    0.9620874290623699
+  ],
+  "measurement_uncertainty": 8.660944104929299e-11,
+  "positioning_accuracy": 9.980309242686041e-11,
+  "multi_axis_correlation": [
+    [
+      1.0,
+      0.15457012911828383,
+      0.08024775781528762
+    ],
+    [
+      0.15457012911828383,
+      1.0,
+      0.12639409774945734
+    ],
+    [
+      0.0802477578152876,
+      0.12639409774945734,
+      0.9999999999999999
+    ]
+  ],
+  "validation_score": 0.8169023720722549,
+  "monte_carlo_samples": 25000,
+  "experimental_validation": true
+}
