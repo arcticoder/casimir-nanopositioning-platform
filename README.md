@@ -1,5 +1,14 @@
 # Casimir Nanopositioning Platform with Multi-Physics Digital Twin
 
+## Related Repositories
+
+- [energy](https://github.com/arcticoder/energy): Central hub for all energy, quantum, and Casimir research. This nanopositioning platform is integrated with the energy framework for digital twin, UQ, and system-level validation.
+- [casimir-ultra-smooth-fabrication-platform](https://github.com/arcticoder/casimir-ultra-smooth-fabrication-platform): Provides ultra-smooth fabrication and quality control for nanopositioning and Casimir experiments.
+- [casimir-environmental-enclosure-platform](https://github.com/arcticoder/casimir-environmental-enclosure-platform): Supplies environmental control and digital twin synchronization for nanopositioning systems.
+- [casimir-anti-stiction-metasurface-coatings](https://github.com/arcticoder/casimir-anti-stiction-metasurface-coatings): Integrates anti-stiction coatings for precision positioning and MEMS/NEMS applications.
+
+All repositories are part of the [arcticoder](https://github.com/arcticoder) ecosystem and link back to the energy framework for unified documentation and integration.
+
 A comprehensive nanopositioning system implementing advanced mathematical formulations derived from quantum field theory, loop quantum gravity, and advanced material science research. Features production-grade multi-physics digital twin capabilities with integrated uncertainty quantification.
 
 ## Overview
