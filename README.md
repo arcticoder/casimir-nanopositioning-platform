@@ -9,31 +9,28 @@
 
 All repositories are part of the [arcticoder](https://github.com/arcticoder) ecosystem and link back to the energy framework for unified documentation and integration.
 
-A comprehensive nanopositioning system implementing advanced mathematical formulations derived from quantum field theory, loop quantum gravity, and advanced material science research. Features production-grade multi-physics digital twin capabilities with integrated uncertainty quantification.
+This repository documents a research and prototype nanopositioning platform that implements advanced mathematical formulations derived from quantum field theory, loop quantum gravity, and material-science models. Reported capabilities come from simulation studies and prototype tests and are not production guarantees.
 
 ## Overview
 
-This platform implements enhanced Casimir force calculations with quantum corrections, advanced mechanical stability analysis, UQ-validated positioning specifications, sophisticated control systems, multi-material thermal compensation, and a comprehensive multi-physics digital twin framework. All mathematical formulations are based on cutting-edge research findings from the integrated physics repositories.
+This platform implements prototype implementations of Casimir force calculations with quantum-inspired corrections, mechanical stability analysis, uncertainty-aware positioning specifications, and a multi-physics digital twin framework intended for research and reproducible experiments. Mathematical derivations are provided for reference; results depend on model assumptions and test configurations.
 
-## Key Features
+## Key Features (research-stage / reported)
 
-- **Quantum-Enhanced Casimir Forces**: Incorporates polymer quantization and metamaterial effects
-- **Multi-Physics Digital Twin**: Real-time synchronized digital representation with <1ms latency
-- **Advanced Uncertainty Quantification**: 50K Monte Carlo samples with cross-domain correlation modeling
-- **Production-Grade Control**: Multi-rate architecture (Fast: >1kHz, Slow: ~10Hz, Thermal: ~0.1Hz)
-- **Bayesian State Estimation**: EKF/UKF/EnKF/PF with adaptive filtering
-- **Statistical UQ Validation**: 95% confidence intervals with calibration testing
-- **Global Stability Guarantees**: Lyapunov stability analysis ensures robust operation
+- **Quantum-Enhanced Casimir Forces**: Prototype implementations that include polymer-inspired corrections and metamaterial models (see `src/physics` and `docs/` for provenance).
+- **Multi-Physics Digital Twin**: Demonstrated synchronized digital representations in lab setups; latency depends on configuration and hardware.
+- **Uncertainty Quantification**: Monte Carlo experiments (reported sample counts) used for sensitivity and coverage assessment; see `docs/UQ-notes.md` for details.
+- **Control Architecture**: Multi-rate control architectures explored for research; not a certified production control system.
+- **Bayesian State Estimation**: Implementations of EKF/UKF/EnKF/PF are provided for experimental comparison.
+- **Stability Analysis**: Lyapunov analyses are included as proofs-of-concept; operational guarantees depend on full system integration and testing.
 
-## Performance Specifications
+## Reported Performance (examples)
 
-- **Resolution**: <0.05 nm positioning accuracy
-- **Angular Stability**: <1 µrad parallelism maintenance  
-- **Thermal Drift**: <0.1 nm/hour long-term stability
-- **Digital Twin Sync**: <1ms real-time synchronization
-- **State Prediction**: >99% accuracy (R² > 0.99)
-- **UQ Coverage**: 95.2% ± 1.8% statistical coverage
-- **Control Bandwidth**: 1 kHz fast loop, 10 Hz slow loop, 0.1 Hz thermal loop
+- **Resolution**: Prototype demonstrations report ~0.05 nm in controlled setups; results depend on environmental control and calibration.
+- **Angular Stability**: Lab experiments report sub-µrad performance under specific fixtures.
+- **Thermal Drift**: Observed thermal drift metrics are conditional on thermal management and materials.
+- **Digital Twin Sync**: Achieved low-latency sync in testbeds; actual latency depends on hardware and network.
+- **Prediction & UQ**: Reported R² and coverage numbers are for select experiments; consult reproducibility artifacts in `docs/`.
 
 ## Digital Twin Framework
 
@@ -168,14 +165,15 @@ The complete system is integrated in `src/integrated_system.py`, providing:
 - **Performance Validation**: Monte Carlo validation with uncertainty quantification
 - **Real-time Operation**: Support for real-time control and compensation
 
-## Key Features
+## Scope, Validation & Limitations
 
-1. **Quantum-Enhanced Casimir Forces**: Incorporates polymer quantization and metamaterial effects
-2. **Global Stability Guarantees**: Lyapunov stability analysis ensures robust operation
-3. **UQ-Validated Performance**: Statistical validation with 5000+ Monte Carlo samples
-4. **Advanced Control Systems**: PID/LQG controllers with specified gain and phase margins
-5. **Multi-Material Optimization**: Material selection and thermal compensation algorithms
-6. **Production-Ready Specifications**: Complete fabrication and assembly guidelines
+Scope: Research prototypes, simulation studies, and lab demonstrations for nanopositioning and Casimir-force-aware control. Not a production system.
+
+Validation: Some validation artifacts and UQ summaries are included in `docs/`; where claims are made, they are supported by experiment or simulation artifacts linked in `docs/` where available.
+
+Limitations: Achieved performance depends on high-precision fabrication, environmental control, and full-system integration. Long-term stability, robustness in non-lab environments, and manufacturing yield require further engineering and testing.
+
+If you plan to adopt or cite performance numbers from this repository, please include links to the underlying datasets and scripts that produced those figures.
 
 ## Performance Specifications
 
