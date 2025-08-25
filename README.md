@@ -17,12 +17,12 @@ This platform implements prototype implementations of Casimir force calculations
 
 ## Key Features (research-stage / reported)
 
-- **Quantum-Enhanced Casimir Forces**: Prototype implementations that include polymer-inspired corrections and metamaterial models (see `src/physics` and `docs/` for provenance).
-- **Multi-Physics Digital Twin**: Demonstrated synchronized digital representations in lab setups; latency depends on configuration and hardware.
-- **Uncertainty Quantification**: Monte Carlo experiments (reported sample counts) used for sensitivity and coverage assessment; see `docs/UQ-notes.md` for details.
-- **Control Architecture**: Multi-rate control architectures explored for research; not a certified production control system.
-- **Bayesian State Estimation**: Implementations of EKF/UKF/EnKF/PF are provided for experimental comparison.
-- **Stability Analysis**: Lyapunov analyses are included as proofs-of-concept; operational guarantees depend on full system integration and testing.
+- **Quantum-Enhanced Casimir Forces**: Prototype implementations and modeling studies that explore polymer-inspired corrections and metamaterial models (see `src/physics` and `docs/` for provenance). Results are dataset- and model-dependent.
+- **Multi-Physics Digital Twin**: Reported synchronized digital representations in lab setups; latency and fidelity are conditional on hardware, configuration, and model calibration.
+- **Uncertainty Quantification**: Monte Carlo experiments are used for sensitivity and coverage assessment; reported sample sizes and UQ summaries are provided in `docs/UQ-notes.md` and should be reviewed for applicability.
+- **Control Architecture**: Multi-rate control architectures explored for research; these are prototypes and not certified production control systems.
+- **Bayesian State Estimation**: Implementations of EKF/UKF/EnKF/PF are provided for experimental comparison; algorithmic performance varies with model mismatch and tuning.
+- **Stability Analysis**: Lyapunov-style analyses are included as proofs-of-concept; operational stability guarantees require full-system integration and empirical validation.
 
 ## Reported Performance (examples)
 
@@ -175,14 +175,16 @@ Limitations: Achieved performance depends on high-precision fabrication, environ
 
 If you plan to adopt or cite performance numbers from this repository, please include links to the underlying datasets and scripts that produced those figures.
 
-## Performance Specifications
+## Reported Performance Specifications (prototype / experimental)
 
-- **Resolution**: 0.05 nm (enhanced from 0.1 nm baseline)
-- **Stability**: 0.1 nm/hour thermal drift
-- **Bandwidth**: 1 kHz control bandwidth
-- **Range**: 1000 nm positioning range
-- **Accuracy**: Sub-nanometer absolute positioning
-- **Repeatability**: < 0.02 nm RMS
+The figures below summarize reported results from prototype demonstrations and simulation studies. Treat these as provisional, experiment-conditional values and consult the referenced `docs/` artifacts for raw data, test conditions, and analysis scripts.
+
+- **Resolution (reported)**: ~0.05 nm in controlled setups (dependent on calibration and environmental control)
+- **Stability (reported)**: ~0.1 nm/hour thermal drift in test fixtures
+- **Bandwidth (reported)**: ~1 kHz control bandwidth under test conditions
+- **Range (reported)**: ~1000 nm positioning range in prototype hardware
+- **Accuracy (reported)**: Sub-nanometer absolute positioning reported for selected experiments
+- **Repeatability (reported)**: < 0.02 nm RMS in controlled demonstrations
 
 ## Installation and Usage
 
@@ -281,17 +283,19 @@ All mathematical formulations have been validated through:
 - **Numerical Stability**: Robust numerical methods for all calculations
 - **Physical Consistency**: All results satisfy fundamental physics constraints
 
-## Performance Comparison
+## Performance Comparison (reported examples)
 
-| Specification | Baseline | Enhanced | Digital Twin |
-|---------------|----------|----------|--------------|
-| Resolution | 0.1 nm | 0.05 nm | <0.03 nm |
-| Stability | 0.2 nm/hour | 0.1 nm/hour | 0.08 nm/hour |
-| Force Accuracy | ~10% | ~2% | ~1% |
-| Bandwidth | 500 Hz | 1000 Hz | 1000 Hz |
-| State Prediction | N/A | N/A | R² > 0.99 |
-| UQ Coverage | N/A | N/A | 95.2% ± 1.8% |
-| Sync Latency | N/A | N/A | <1ms |
+The table summarizes reported/baseline comparisons from prototype experiments and modeling studies. Numbers should be interpreted in context — check `docs/` for test conditions, datasets, and analysis code.
+
+| Specification | Baseline (reported) | Enhanced (reported) | Digital Twin (reported) |
+|---------------|---------------------:|---------------------:|------------------------:|
+| Resolution | 0.1 nm (example baseline) | 0.05 nm (reported in select tests) | <0.03 nm (reported model fit) |
+| Stability | 0.2 nm/hour (baseline) | 0.1 nm/hour (reported) | 0.08 nm/hour (reported) |
+| Force Accuracy | ~10% (baseline) | ~2% (reported) | ~1% (reported) |
+| Bandwidth | 500 Hz | 1000 Hz (reported) | 1000 Hz (reported) |
+| State Prediction | N/A | N/A | R² ≈ 0.99 (reported for select datasets) |
+| UQ Coverage | N/A | N/A | 95% ± 2% (reported, dataset-dependent) |
+| Sync Latency | N/A | N/A | <1 ms (reported in lab networks) |
 
 ## Future Enhancements
 
@@ -304,16 +308,16 @@ Planned future enhancements include:
 5. **Multi-Platform Coordination**: Distributed digital twin networks for coordinated systems
 6. **Real-Time Adaptation**: Online learning and adaptive control systems
 
-## Digital Twin Architecture
+## Digital Twin Architecture (reported capabilities)
 
-The digital twin framework provides:
+The digital twin framework supports prototype capabilities reported in testing and simulation. Actual performance is conditional on model selection, calibration, and hardware integration.
 
-- **Real-Time Synchronization**: <1ms latency between physical and digital systems
-- **Multi-Physics Coupling**: Comprehensive modeling of mechanical-thermal-EM-quantum interactions
-- **Predictive Capabilities**: Future state prediction with uncertainty bounds
-- **Adaptive Filtering**: Multiple Bayesian estimation algorithms with automatic selection
-- **Statistical Validation**: Comprehensive UQ validation with coverage and calibration testing
-- **Correlation Modeling**: Cross-domain correlation analysis for multi-physics systems
+- **Real-Time Synchronization (reported)**: Lab testbeds report low-latency sync (sub-ms to a few ms depending on network and hardware)
+- **Multi-Physics Coupling**: Modeling of mechanical-thermal-EM-quantum interactions for research and reproducibility
+- **Predictive Capabilities**: Future-state prediction with uncertainty-aware outputs in prototype experiments
+- **Adaptive Filtering**: Multiple Bayesian estimation algorithms available for experimental comparison
+- **Statistical Validation**: UQ validation workflows included; consult `docs/` for scripts and diagnostics
+- **Correlation Modeling**: Cross-domain correlation analyses provided for investigation and sensitivity studies
 
 ## License
 
@@ -340,4 +344,4 @@ Mathematical formulations are based on peer-reviewed research in:
 
 ---
 
-**Enhanced Casimir Nanopositioning Platform** - Pushing the boundaries of precision positioning through advanced mathematical formulations and quantum corrections.
+**Enhanced Casimir Nanopositioning Platform** — This repository documents research-stage models, prototype software, and experimental artifacts exploring precision nanopositioning and Casimir-aware control. Numerical summaries are provisional and require reproducible artifacts, independent review, and engineering validation before being treated as deployment-ready specifications.
