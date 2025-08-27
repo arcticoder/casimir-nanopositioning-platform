@@ -19,14 +19,14 @@ This platform implements prototype implementations of Casimir force calculations
 
 - **Quantum-Enhanced Casimir Forces**: Prototype implementations and modeling studies that explore polymer-inspired corrections and metamaterial models (see `src/physics` and `docs/` for provenance). Results are dataset- and model-dependent.
 - **Multi-Physics Digital Twin**: Reported synchronized digital representations in lab setups; latency and fidelity are conditional on hardware, configuration, and model calibration.
-- **Uncertainty Quantification**: Monte Carlo experiments are used for sensitivity and coverage assessment; reported sample sizes and UQ summaries are provided in `docs/UQ-notes.md` and should be reviewed for applicability.
+- **Uncertainty Quantification**: Monte Carlo experiments are used for sensitivity and coverage assessment; reported sample sizes and UQ summaries are provided in `docs/UQ-notes.md` and should be reviewed for applicability. Reported sample counts are conditional on experiment design and are not universal recommendations.
 - **Control Architecture**: Multi-rate control architectures explored for research; these are prototypes and not certified production control systems.
 - **Bayesian State Estimation**: Implementations of EKF/UKF/EnKF/PF are provided for experimental comparison; algorithmic performance varies with model mismatch and tuning.
 - **Stability Analysis**: Lyapunov-style analyses are included as proofs-of-concept; operational stability guarantees require full-system integration and empirical validation.
 
 ## Reported Performance (examples)
 
-- **Resolution**: Prototype demonstrations report ~0.05 nm in controlled setups; results depend on environmental control and calibration.
+- **Resolution (reported)**: Prototype demonstrations report ~0.05 nm in controlled setups; reported figures are conditional on experimental configuration, calibration, and measurement methods.
 - **Angular Stability**: Lab experiments report sub-µrad performance under specific fixtures.
 - **Thermal Drift**: Observed thermal drift metrics are conditional on thermal management and materials.
 - **Digital Twin Sync**: Achieved low-latency sync in testbeds; actual latency depends on hardware and network.
@@ -48,11 +48,11 @@ X_digital = {
 ```
 
 ### Uncertainty Quantification
-- **Monte Carlo Propagation**: 50,000 samples for critical applications
-- **Convergence Validation**: Gelman-Rubin diagnostics (R̂ < 1.1)
-- **Cross-Domain Correlation**: Full correlation matrix estimation between physics domains
-- **Statistical Validation**: Coverage probability testing and calibration metrics
-- **Numerical Stability**: Overflow/underflow protection with fallback mechanisms
+- **Monte Carlo Propagation**: Example runs use up to 50,000 samples for high-confidence analyses; required sample sizes depend on model complexity and desired error bounds
+- **Convergence Validation**: Gelman-Rubin diagnostics are used as a guideline (target R̂ < 1.1); check chain diagnostics in `docs/UQ-notes.md` for specifics
+- **Cross-Domain Correlation**: Correlation matrices are estimated per dataset; correlation structure depends on experimental design
+- **Statistical Validation**: Coverage probability testing and calibration metrics are reported for select experiments; users should reproduce or re-evaluate for new datasets
+- **Numerical Stability**: Overflow/underflow protection with fallback mechanisms; numerical limits depend on underlying libraries and hardware
 
 ### Bayesian State Estimation
 ```python
@@ -169,11 +169,11 @@ The complete system is integrated in `src/integrated_system.py`, providing:
 
 Scope: Research prototypes, simulation studies, and lab demonstrations for nanopositioning and Casimir-force-aware control. Not a production system.
 
-Validation: Some validation artifacts and UQ summaries are included in `docs/`; where claims are made, they are supported by experiment or simulation artifacts linked in `docs/` where available.
+Validation: Some validation artifacts and UQ summaries are included in `docs/`; where claims are made, they are supported by experiment or simulation artifacts linked in `docs/` where available. Users should consult raw datasets, chain diagnostics, and benchmark scripts before generalizing results.
 
-Limitations: Achieved performance depends on high-precision fabrication, environmental control, and full-system integration. Long-term stability, robustness in non-lab environments, and manufacturing yield require further engineering and testing.
+Limitations: Achieved performance depends on high-precision fabrication, environmental control, and full-system integration. Long-term stability, robustness in non-lab environments, and manufacturing yield require further engineering and testing. Confidence bounds, convergence checks, and sensitivity analyses should accompany any cited numeric claims.
 
-If you plan to adopt or cite performance numbers from this repository, please include links to the underlying datasets and scripts that produced those figures.
+If you plan to adopt or cite performance numbers from this repository, please include links to the underlying datasets and scripts that produced those figures and attach UQ artifacts where applicable (e.g., `docs/UQ-notes.md`, `docs/benchmarks.md`).
 
 ## Reported Performance Specifications (prototype / experimental)
 
@@ -181,7 +181,7 @@ The figures below summarize reported results from prototype demonstrations and s
 
 - **Resolution (reported)**: ~0.05 nm in controlled setups (dependent on calibration and environmental control)
 - **Stability (reported)**: ~0.1 nm/hour thermal drift in test fixtures
-- **Bandwidth (reported)**: ~1 kHz control bandwidth under test conditions
+- **Bandwidth (reported)**: ~1 kHz control bandwidth observed in select test conditions
 - **Range (reported)**: ~1000 nm positioning range in prototype hardware
 - **Accuracy (reported)**: Sub-nanometer absolute positioning reported for selected experiments
 - **Repeatability (reported)**: < 0.02 nm RMS in controlled demonstrations
