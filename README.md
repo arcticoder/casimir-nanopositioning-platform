@@ -276,12 +276,12 @@ The enhanced mathematical formulations are derived from extensive research acros
 
 ## Validation and Testing
 
-All mathematical formulations have been validated through:
+Some mathematical formulations have been validated in example runs; validation is ongoing and conditional on configuration and datasets. Where validation artifacts are provided, they are linked in `docs/` and should be reviewed before generalizing results.
 
-- **Monte Carlo Analysis**: 5000+ samples for statistical validation
-- **Cross-Repository Verification**: Consistency checks across multiple physics implementations
-- **Numerical Stability**: Robust numerical methods for all calculations
-- **Physical Consistency**: All results satisfy fundamental physics constraints
+- **Monte Carlo Analysis (example runs)**: Select experiments used Monte Carlo samples (e.g., 5000+ samples) for sensitivity and coverage checks; required sample sizes depend on model complexity and desired error bounds.
+- **Cross-Repository Verification (example checks)**: Example consistency checks were performed across certain physics implementations; these checks are not exhaustive across all parameterizations.
+- **Numerical Stability**: Numerical methods include overflow/underflow protections and fallbacks; numerical limits and behavior depend on library versions and hardware — users should validate numerical stability for their environment.
+- **Physical Consistency (conditional)**: Reported results were checked for consistency with basic physical constraints in the example configurations used; further empirical validation is necessary before treating results as broadly generalizable.
 
 ## Performance Comparison (reported examples)
 
